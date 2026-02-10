@@ -18,4 +18,4 @@ out/
 # Logs
 *.log
 npm-debug.log*
-plugins/pair-programmer/skills/pair-programmer/videodb-recorder
+videodb-recorder

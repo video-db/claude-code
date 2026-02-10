@@ -288,7 +288,7 @@ function getIndexingConfig() {
 
 // Project root from env (set by hook scripts), fallback to cwd
 const PROJECT_ROOT = process.env.PROJECT_DIR || process.cwd();
-const CONTEXT_FILE = path.join(PROJECT_ROOT, ".context.json");
+const CONTEXT_FILE = path.join(__dirname, ".context.json");
 
 // Three FIFO queues; each has its own max length from config.
 const defaultBufferSize = config.context_buffer_size || 50;
@@ -1512,6 +1512,21 @@ app.whenReady().then(async () => {
       } else {
         console.log("⚠ Tunnel failed, will use WebSocket for events");
         webhookUrl = null;
+      }
+    }
+
+    // Wait for tunnel/webhook to stabilize before verifying
+    if (webhookUrl) {
+      console.log("Waiting 10s for webhook URL to stabilize...");
+      await new Promise((r) => setTimeout(r, 10000));
+
+      const baseUrl = webhookUrl.replace(/\/webhook$/, "");
+      try {
+        const resp = await fetch(`${baseUrl}/api`);
+        const data = await resp.json();
+        console.log(`✓ Webhook URL verified: ${baseUrl}/api →`, JSON.stringify(data));
+      } catch (e) {
+        console.warn(`⚠ Webhook URL verification failed (${baseUrl}/api):`, e.message);
       }
     }
 
