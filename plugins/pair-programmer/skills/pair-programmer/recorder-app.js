@@ -763,8 +763,8 @@ app.whenReady().then(async () => {
 
     // Wait for tunnel/webhook to stabilize before verifying
     if (webhookUrl) {
-      console.log("Waiting 10s for webhook URL to stabilize...");
-      await new Promise((r) => setTimeout(r, 10000));
+      console.log("Waiting 5s for webhook URL to stabilize...");
+      await new Promise((r) => setTimeout(r, 5000));
 
       const baseUrl = webhookUrl.replace(/\/webhook$/, "");
       try {

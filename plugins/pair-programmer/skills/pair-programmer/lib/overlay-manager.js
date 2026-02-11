@@ -7,6 +7,7 @@ class OverlayManager {
     this._recordingState = recState;
     this._shortcut = assistantShortcut;
     this._uiDir = uiDir;
+    this._loading = false;
 
     recState.on("stateChanged", () => this._pushStatus());
     ipcMain.on("overlay-close", () => this.setVisible(false));
@@ -19,13 +20,15 @@ class OverlayManager {
 
   show(text, options = {}) {
     const loading = options.loading === true;
+    this._loading = loading;
     const payload = { text: text != null ? String(text) : "", loading };
     console.log("[Overlay]", payload.text || "(loading)");
     const win = this._ensureWindow();
+    win.show();
 
     const send = () => {
       win.webContents.send("overlay-content", payload);
-      this._pushStatus();
+      if (!loading) this._pushStatus();
     };
     win.webContents.once("did-finish-load", send);
     if (!win.webContents.isLoading()) send();
@@ -99,6 +102,7 @@ class OverlayManager {
   }
 
   _pushStatus() {
+    if (this._loading) return;
     if (!this._window || this._window.isDestroyed()) return;
     this._window.webContents.send("overlay-status", this._recordingState.toOverlayPayload());
   }
