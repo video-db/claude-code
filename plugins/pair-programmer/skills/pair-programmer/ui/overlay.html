@@ -17,7 +17,8 @@
       backdrop-filter: blur(20px);
       -webkit-backdrop-filter: blur(20px);
       border: 1px solid rgba(255, 255, 255, 0.1);
-      max-height: 380px;
+      min-height: 120px;
+      height: 100vh;
       overflow: hidden;
       display: flex;
       flex-direction: column;
@@ -52,6 +53,8 @@
       background: #444;
       color: #fff;
     }
+
+    /* Main content area */
     .content {
       flex: 1;
       overflow-y: auto;
@@ -61,16 +64,12 @@
       white-space: pre-wrap;
       word-break: break-word;
     }
-    .content::-webkit-scrollbar {
-      width: 6px;
-    }
-    .content::-webkit-scrollbar-track {
-      background: transparent;
-    }
-    .content::-webkit-scrollbar-thumb {
-      background: #444;
-      border-radius: 3px;
-    }
+    .content::-webkit-scrollbar { width: 6px; }
+    .content::-webkit-scrollbar-track { background: transparent; }
+    .content::-webkit-scrollbar-thumb { background: #444; border-radius: 3px; }
+    .content.hidden { display: none; }
+
+    /* Loading / spinner overlay (used for assistant + starting) */
     .loading-wrap {
       display: none;
       flex: 1;
@@ -80,9 +79,7 @@
       gap: 12px;
       padding: 24px 0;
     }
-    .loading-wrap.visible {
-      display: flex;
-    }
+    .loading-wrap.visible { display: flex; }
     .spinner {
       width: 28px;
       height: 28px;
@@ -91,16 +88,13 @@
       border-radius: 50%;
       animation: spin 0.8s linear infinite;
     }
-    @keyframes spin {
-      to { transform: rotate(360deg); }
-    }
+    @keyframes spin { to { transform: rotate(360deg); } }
     .loading-text {
       font-size: 12px;
       color: #86868b;
     }
-    .content.loading-hidden {
-      display: none;
-    }
+
+    /* Status bar (bottom) */
     .status {
       margin-top: 12px;
       padding-top: 12px;
@@ -108,21 +102,35 @@
       font-size: 11px;
       color: #86868b;
     }
-    .status-not-recording {
-      display: none;
-    }
-    .status-not-recording.visible {
-      display: block;
-    }
-    .status-channels {
-      display: none;
+
+    /* Status states — all hidden by default, .visible to show */
+    .status-idle,
+    .status-starting,
+    .status-recording,
+    .status-stopping,
+    .status-stopped,
+    .status-exported,
+    .status-failed { display: none; }
+
+    .status-idle.visible,
+    .status-starting.visible,
+    .status-stopping.visible,
+    .status-stopped.visible { display: block; }
+
+    .status-recording.visible {
+      display: flex;
       flex-wrap: wrap;
       gap: 10px 14px;
       align-items: center;
     }
-    .status-channels.visible {
+
+    .status-failed.visible {
       display: flex;
+      flex-direction: column;
+      gap: 6px;
     }
+
+    /* Recording channels */
     .channel-item {
       display: flex;
       align-items: center;
@@ -133,9 +141,12 @@
       width: 6px;
       height: 6px;
       border-radius: 50%;
-      background: #30d158;
       flex-shrink: 0;
     }
+    .status-dot.green { background: #30d158; }
+    .status-dot.yellow { background: #ffd60a; }
+    .status-dot.blue { background: #0a84ff; }
+    .status-dot.red { background: #ff453a; }
     .status-dot.live {
       animation: blink 1.2s ease-in-out infinite;
     }
@@ -143,113 +154,533 @@
       0%, 100% { opacity: 1; }
       50% { opacity: 0.4; }
     }
+
+    .status-duration {
+      margin-left: auto;
+      font-variant-numeric: tabular-nums;
+      color: #aaa;
+    }
+
+    /* Visual latency indicator */
+    .status-latency {
+      display: none;
+      width: 100%;
+      margin-top: 6px;
+      font-size: 10px;
+      font-variant-numeric: tabular-nums;
+      color: #86868b;
+    }
+    .status-latency.visible { display: flex; align-items: center; gap: 6px; }
+    .latency-value { color: #aaa; }
+    .latency-value.good { color: #30d158; }
+    .latency-value.ok { color: #ffd60a; }
+    .latency-value.slow { color: #ff9f0a; }
+    .latency-value.bad { color: #ff453a; }
+    .latency-waiting { color: #555; font-style: italic; }
+
+    /* Starting */
     .status-starting {
       display: none;
+      align-items: center;
+      gap: 8px;
     }
-    .status-starting.visible {
-      display: block;
+    .status-starting.visible { display: flex; }
+    .mini-spinner {
+      width: 12px;
+      height: 12px;
+      border: 2px solid rgba(255, 255, 255, 0.2);
+      border-top-color: #ffd60a;
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
     }
-    .status-failed {
+
+    /* Stopping */
+    .status-stopping {
       display: none;
-      flex-direction: column;
-      gap: 6px;
+      align-items: center;
+      gap: 8px;
     }
-    .status-failed.visible {
+    .status-stopping.visible { display: flex; }
+
+    /* Stopped */
+    .status-stopped { color: #30d158; }
+
+    /* Exported */
+    .status-exported { color: #0a84ff; }
+    .status-exported.visible {
       display: flex;
+      align-items: center;
+      gap: 8px;
     }
-    .status-failed-message {
-      color: #ff453a;
+    .view-btn {
+      background: #0a84ff;
+      color: #fff;
+      border: none;
+      border-radius: 4px;
+      padding: 2px 8px;
+      font-size: 11px;
+      font-weight: 500;
+      cursor: pointer;
+      margin-left: 4px;
     }
-    .status-failed-hint {
+    .view-btn:hover { background: #0077e6; }
+
+    /* Failed */
+    .status-failed-message { color: #ff453a; }
+    .status-failed-hint { color: #86868b; font-size: 10px; }
+
+    /* Context viewer */
+    .context-viewer { display: none; flex: 1; flex-direction: column; overflow: hidden; }
+    .context-viewer.visible { display: flex; }
+    .context-tabs {
+      display: flex;
+      gap: 2px;
+      margin-bottom: 8px;
+      flex-shrink: 0;
+    }
+    .context-tab {
+      padding: 4px 10px;
+      font-size: 11px;
+      border: none;
+      border-radius: 6px;
+      background: #2a2a2a;
       color: #86868b;
+      cursor: pointer;
+      -webkit-app-region: no-drag;
+    }
+    .context-tab:hover { background: #333; color: #ccc; }
+    .context-tab.active { background: #444; color: #fff; }
+    .context-list {
+      flex: 1;
+      overflow-y: auto;
+      font-size: 11px;
+      line-height: 1.5;
+      color: #ccc;
+    }
+    .context-list::-webkit-scrollbar { width: 6px; }
+    .context-list::-webkit-scrollbar-track { background: transparent; }
+    .context-list::-webkit-scrollbar-thumb { background: #444; border-radius: 3px; }
+    .context-item {
+      padding: 6px 0;
+      border-bottom: 1px solid rgba(255,255,255,0.05);
+    }
+    .context-item:last-child { border-bottom: none; }
+    .context-item-header {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      margin-bottom: 2px;
       font-size: 10px;
+      color: #666;
+    }
+    .context-item-type {
+      font-size: 10px;
+      padding: 1px 5px;
+      border-radius: 3px;
+      background: #2a2a2a;
+    }
+    .context-item-type.screen { color: #0a84ff; }
+    .context-item-type.mic { color: #30d158; }
+    .context-item-type.system_audio { color: #ffd60a; }
+    .context-item-text {
+      font-size: 11px;
+      color: #ccc;
+      word-break: break-word;
+    }
+    .context-empty {
+      color: #555;
+      font-style: italic;
+      padding: 16px 0;
+      text-align: center;
+    }
+    .context-toggle {
+      padding: 3px 8px;
+      font-size: 11px;
+      border: 1px solid #444;
+      border-radius: 6px;
+      background: transparent;
+      color: #86868b;
+      cursor: pointer;
+      -webkit-app-region: no-drag;
+    }
+    .context-toggle:hover { background: #333; color: #ccc; }
+    .context-toggle.active { background: #444; color: #fff; border-color: #666; }
+
+    /* Resize handle */
+    .resize-handle {
+      position: fixed;
+      bottom: 0;
+      right: 0;
+      width: 16px;
+      height: 16px;
+      cursor: nwse-resize;
+      -webkit-app-region: no-drag;
+      z-index: 100;
+    }
+    .resize-handle::after {
+      content: '';
+      position: absolute;
+      bottom: 3px;
+      right: 3px;
+      width: 8px;
+      height: 8px;
+      border-right: 2px solid rgba(255,255,255,0.25);
+      border-bottom: 2px solid rgba(255,255,255,0.25);
     }
   </style>
 </head>
 <body>
   <div class="container">
     <div class="header">
-      <span class="title">VideoDB Context</span>
-      <button class="close-btn" onclick="close()">×</button>
+      <span class="title">🧞 Pair Programmer</span>
+      <div style="display:flex;gap:6px;align-items:center;-webkit-app-region:no-drag;">
+        <button class="context-toggle" id="contextToggle" onclick="toggleContext()">Context</button>
+        <button class="close-btn" onclick="closeOverlay()">×</button>
+      </div>
     </div>
+
     <div class="loading-wrap" id="loadingWrap">
       <div class="spinner"></div>
-      <span class="loading-text">Thinking...</span>
+      <span class="loading-text" id="loadingText">Thinking...</span>
     </div>
+
     <div class="content" id="content">
       Waiting for context...
     </div>
+
+    <div class="context-viewer" id="contextViewer">
+      <div class="context-tabs">
+        <button class="context-tab active" data-type="all" onclick="switchContextTab('all', this)">All</button>
+        <button class="context-tab" data-type="screen" onclick="switchContextTab('screen', this)">🖥 Screen</button>
+        <button class="context-tab" data-type="mic" onclick="switchContextTab('mic', this)">🎙 Mic</button>
+        <button class="context-tab" data-type="system_audio" onclick="switchContextTab('system_audio', this)">🔊 Audio</button>
+      </div>
+      <div class="context-list" id="contextList">
+        <div class="context-empty">No context yet</div>
+      </div>
+    </div>
+
     <div class="status">
-      <div class="status-not-recording visible" id="statusNotRecording">
+      <div class="status-idle visible" id="statusIdle">
         Type /record in Claude to start recording
       </div>
       <div class="status-starting" id="statusStarting">
-        Starting
+        <div class="mini-spinner"></div>
+        <span>Starting session...</span>
+      </div>
+      <div class="status-recording" id="statusRecording"></div>
+      <div class="status-latency" id="statusLatency">
+        <span>🖥 Latency:</span>
+        <span class="latency-value" id="latencyValue">—</span>
+      </div>
+      <div class="status-stopping" id="statusStopping">
+        <div class="mini-spinner"></div>
+        <span>Stopping recording...</span>
+      </div>
+      <div class="status-stopped" id="statusStopped">
+        ✓ Recording saved
+      </div>
+      <div class="status-exported" id="statusExported">
+        <span>✓ Exported</span>
+        <button class="view-btn" id="exportedViewBtn" style="display:none" onclick="openPlayerUrl()">View</button>
       </div>
       <div class="status-failed" id="statusFailed">
         <span class="status-failed-message" id="statusFailedMessage">Recording failed</span>
         <span class="status-failed-hint">Run /record again in Claude to start a new recording.</span>
       </div>
-      <div class="status-channels" id="statusChannels"></div>
     </div>
   </div>
 
-  <script>
-    const { ipcRenderer } = require('electron');
+  <div class="resize-handle" id="resizeHandle"></div>
 
+  <script>
+    const { ipcRenderer, shell } = require('electron');
+
+    let durationInterval = null;
+    let recordingStartTime = null;
+    let exportedTimeout = null;
+    let currentPlayerUrl = null;
+
+    // -- Content updates (from overlay-manager.show()) --
     ipcRenderer.on('overlay-content', (event, data) => {
       const loadingWrap = document.getElementById('loadingWrap');
       const content = document.getElementById('content');
       if (data.loading) {
+        document.getElementById('loadingText').textContent = data.text || 'Thinking...';
         loadingWrap.classList.add('visible');
-        content.classList.add('loading-hidden');
+        content.classList.add('hidden');
       } else {
         loadingWrap.classList.remove('visible');
-        content.classList.remove('loading-hidden');
+        content.classList.remove('hidden');
         content.textContent = data.text || 'No content';
         content.scrollTop = content.scrollHeight;
       }
     });
 
+    // -- Status updates (from recording state changes) --
     ipcRenderer.on('overlay-status', (event, data) => {
-      const notRecordingEl = document.getElementById('statusNotRecording');
-      const startingEl = document.getElementById('statusStarting');
-      const failedEl = document.getElementById('statusFailed');
-      const failedMessageEl = document.getElementById('statusFailedMessage');
-      const channelsEl = document.getElementById('statusChannels');
+      hideAllStatus();
 
       if (data.failed) {
-        notRecordingEl.classList.remove('visible');
-        startingEl.classList.remove('visible');
-        failedEl.classList.add('visible');
-        channelsEl.classList.remove('visible');
-        channelsEl.innerHTML = '';
-        failedMessageEl.textContent = data.failed.message || 'Recording failed';
-      } else if (data.starting) {
-        notRecordingEl.classList.remove('visible');
-        startingEl.classList.add('visible');
-        failedEl.classList.remove('visible');
-        channelsEl.classList.remove('visible');
-        channelsEl.innerHTML = '';
+        showStatus('statusFailed');
+        document.getElementById('statusFailedMessage').textContent = data.failed.message || 'Recording failed';
+      } else if (data.starting && !data.recording) {
+        showStatus('statusStarting');
+        showMainSpinner('Starting session...');
+      } else if (data.recording && data.stopping) {
+        showStatus('statusStopping');
       } else if (data.recording) {
-        notRecordingEl.classList.remove('visible');
-        startingEl.classList.remove('visible');
-        failedEl.classList.remove('visible');
-        channelsEl.classList.add('visible');
-        const names = (data.channels && data.channels.length) ? data.channels : ['Recording'];
-        channelsEl.innerHTML = names.map(function (name) {
-          return '<div class="channel-item"><span class="status-dot live"></span><span>' + name + '</span></div>';
-        }).join('');
+        showStatus('statusRecording');
+        renderChannels(data.channels, data.duration);
+        startDurationTimer();
+        hideMainSpinner();
+        updateLatency(data.visualLatency);
+      } else if (data.exported) {
+        showStatus('statusExported');
+        stopDurationTimer();
+        currentPlayerUrl = (data.exported && data.exported.playerUrl) || null;
+        var viewBtn = document.getElementById('exportedViewBtn');
+        if (currentPlayerUrl) {
+          viewBtn.style.display = '';
+        } else {
+          viewBtn.style.display = 'none';
+        }
+        // After 10s, transition to stopped
+        if (exportedTimeout) clearTimeout(exportedTimeout);
+        exportedTimeout = setTimeout(function() {
+          hideAllStatus();
+          showStatus('statusStopped');
+          exportedTimeout = null;
+        }, 10000);
+      } else if (data.stopped) {
+        showStatus('statusStopped');
+        stopDurationTimer();
       } else {
-        notRecordingEl.classList.add('visible');
-        startingEl.classList.remove('visible');
-        failedEl.classList.remove('visible');
-        channelsEl.classList.remove('visible');
-        channelsEl.innerHTML = '';
+        showStatus('statusIdle');
+        stopDurationTimer();
+        hideMainSpinner();
       }
     });
 
-    function close() {
+    function hideAllStatus() {
+      ['statusIdle', 'statusStarting', 'statusRecording', 'statusStopping',
+       'statusStopped', 'statusExported', 'statusFailed', 'statusLatency'].forEach(function(id) {
+        document.getElementById(id).classList.remove('visible');
+      });
+    }
+
+    function showStatus(id) {
+      document.getElementById(id).classList.add('visible');
+    }
+
+    function showMainSpinner(text) {
+      document.getElementById('loadingText').textContent = text;
+      document.getElementById('loadingWrap').classList.add('visible');
+      document.getElementById('content').classList.add('hidden');
+    }
+
+    function hideMainSpinner() {
+      document.getElementById('loadingWrap').classList.remove('visible');
+      document.getElementById('content').classList.remove('hidden');
+    }
+
+    function channelEmoji(name) {
+      var n = name.toLowerCase();
+      if (n.includes('display') || n.includes('screen')) return '🖥';
+      if (n.includes('mic')) return '🎙';
+      if (n.includes('system') || n.includes('audio')) return '🔊';
+      return '📡';
+    }
+
+    function renderChannels(channels, duration) {
+      const el = document.getElementById('statusRecording');
+      const names = (channels && channels.length) ? channels : ['Recording'];
+      let html = names.map(function(name) {
+        return '<div class="channel-item"><span class="status-dot green live"></span><span>' + channelEmoji(name) + ' ' + name + '</span></div>';
+      }).join('');
+      html += '<span class="status-duration" id="durationLabel">' + formatDuration(duration || 0) + '</span>';
+      el.innerHTML = html;
+    }
+
+    function startDurationTimer() {
+      stopDurationTimer();
+      recordingStartTime = Date.now();
+      durationInterval = setInterval(function() {
+        const label = document.getElementById('durationLabel');
+        if (!label) return;
+        const el = document.getElementById('statusRecording');
+        if (!el.classList.contains('visible')) return;
+        // Read current text, parse and increment locally for smooth updates
+        const elapsed = Math.round((Date.now() - recordingStartTime) / 1000);
+        // We don't know the absolute start, so just update from the initial duration
+        label.textContent = formatDuration(elapsed + (window._baseDuration || 0));
+      }, 1000);
+    }
+
+    function stopDurationTimer() {
+      if (durationInterval) {
+        clearInterval(durationInterval);
+        durationInterval = null;
+      }
+      recordingStartTime = null;
+    }
+
+    function formatDuration(totalSeconds) {
+      var mins = Math.floor(totalSeconds / 60);
+      var secs = totalSeconds % 60;
+      return mins + ':' + (secs < 10 ? '0' : '') + secs;
+    }
+
+    // Store base duration from first status update so local timer can increment from it
+    ipcRenderer.on('overlay-status', (event, data) => {
+      if (data.recording && !data.stopping && data.duration != null) {
+        window._baseDuration = data.duration;
+        recordingStartTime = Date.now();
+      }
+    });
+
+    function updateLatency(latencyMs) {
+      var el = document.getElementById('statusLatency');
+      var val = document.getElementById('latencyValue');
+      el.classList.add('visible');
+
+      if (latencyMs == null) {
+        val.textContent = 'waiting...';
+        val.className = 'latency-value latency-waiting';
+        return;
+      }
+
+      var secs = (latencyMs / 1000).toFixed(2);
+      val.textContent = secs + 's';
+      val.className = 'latency-value';
+      if (latencyMs < 5000) val.classList.add('good');
+      else if (latencyMs < 10000) val.classList.add('ok');
+      else if (latencyMs < 20000) val.classList.add('slow');
+      else val.classList.add('bad');
+    }
+
+    // -- Context viewer --
+    var contextOpen = false;
+    var contextTab = 'all';
+    var contextRefreshInterval = null;
+
+    function toggleContext() {
+      contextOpen = !contextOpen;
+      var viewer = document.getElementById('contextViewer');
+      var content = document.getElementById('content');
+      var loadingWrap = document.getElementById('loadingWrap');
+      var toggle = document.getElementById('contextToggle');
+
+      if (contextOpen) {
+        viewer.classList.add('visible');
+        content.classList.add('hidden');
+        loadingWrap.classList.remove('visible');
+        toggle.classList.add('active');
+        fetchContext();
+        contextRefreshInterval = setInterval(fetchContext, 3000);
+      } else {
+        viewer.classList.remove('visible');
+        content.classList.remove('hidden');
+        toggle.classList.remove('active');
+        if (contextRefreshInterval) {
+          clearInterval(contextRefreshInterval);
+          contextRefreshInterval = null;
+        }
+      }
+    }
+
+    function switchContextTab(type, btn) {
+      contextTab = type;
+      document.querySelectorAll('.context-tab').forEach(function(t) { t.classList.remove('active'); });
+      btn.classList.add('active');
+      fetchContext();
+    }
+
+    async function fetchContext() {
+      try {
+        var data = await ipcRenderer.invoke('get-context', contextTab === 'all' ? 'all' : contextTab);
+        renderContext(data);
+      } catch (e) {
+        document.getElementById('contextList').innerHTML = '<div class="context-empty">Failed to load context</div>';
+      }
+    }
+
+    function renderContext(data) {
+      var list = document.getElementById('contextList');
+      var items = [];
+
+      if (contextTab === 'all') {
+        ['screen', 'mic', 'system_audio'].forEach(function(type) {
+          (data[type] || []).forEach(function(item) {
+            items.push({ type: type, text: item.text, timestamp: item.timestamp });
+          });
+        });
+        items.sort(function(a, b) { return (a.timestamp || '').localeCompare(b.timestamp || ''); });
+      } else {
+        var arr = data[contextTab] || [];
+        items = arr.map(function(item) {
+          return { type: contextTab, text: item.text, timestamp: item.timestamp };
+        });
+      }
+
+      if (items.length === 0) {
+        list.innerHTML = '<div class="context-empty">No context yet</div>';
+        return;
+      }
+
+      var typeEmoji = { screen: '🖥', mic: '🎙', system_audio: '🔊' };
+      var html = items.map(function(item) {
+        var time = item.timestamp ? new Date(item.timestamp).toLocaleTimeString() : '';
+        var emoji = typeEmoji[item.type] || '📡';
+        return '<div class="context-item">' +
+          '<div class="context-item-header">' +
+            '<span class="context-item-type ' + item.type + '">' + emoji + ' ' + item.type.replace('_', ' ') + '</span>' +
+            '<span>' + time + '</span>' +
+          '</div>' +
+          '<div class="context-item-text">' + escapeHtml(item.text || '(empty)') + '</div>' +
+        '</div>';
+      }).join('');
+
+      var wasAtBottom = list.scrollHeight - list.scrollTop - list.clientHeight < 30;
+      list.innerHTML = html;
+      if (wasAtBottom) list.scrollTop = list.scrollHeight;
+    }
+
+    function escapeHtml(str) {
+      var div = document.createElement('div');
+      div.textContent = str;
+      return div.innerHTML;
+    }
+
+    // Resize handle drag
+    (function() {
+      const handle = document.getElementById('resizeHandle');
+      let startX, startY, startW, startH;
+      handle.addEventListener('mousedown', function(e) {
+        e.preventDefault();
+        startX = e.screenX;
+        startY = e.screenY;
+        startW = window.outerWidth;
+        startH = window.outerHeight;
+        document.addEventListener('mousemove', onMove);
+        document.addEventListener('mouseup', onUp);
+      });
+      function onMove(e) {
+        var w = Math.max(250, startW + (e.screenX - startX));
+        var h = Math.max(150, startH + (e.screenY - startY));
+        ipcRenderer.send('overlay-resize', { width: w, height: h });
+      }
+      function onUp() {
+        document.removeEventListener('mousemove', onMove);
+        document.removeEventListener('mouseup', onUp);
+      }
+    })();
+
+    function openPlayerUrl() {
+      if (currentPlayerUrl) shell.openExternal(currentPlayerUrl);
+    }
+
+    function closeOverlay() {
       ipcRenderer.send('overlay-close');
     }
   </script>
