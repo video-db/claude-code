@@ -9,6 +9,7 @@ const {
   ipcMain,
 } = require("electron");
 const http = require("http");
+const net = require("net");
 const { spawn, execSync } = require("child_process");
 const { connect } = require("videodb");
 const { CaptureClient } = require("videodb/capture");
@@ -48,6 +49,7 @@ const API_KEY = config.videodb_api_key || process.env.VIDEO_DB_API_KEY;
 const BASE_URL = config.videodb_backend_url || "https://api.videodb.io";
 const CONFIGURED_WEBHOOK_URL = config.webhook_url || "";
 const API_PORT = config.recorder_port || process.env.RECORDER_PORT || 8899;
+const HOOK_SOCKET_PATH = "/tmp/videodb-hook.sock";
 
 // Indexing configuration from config file
 const INDEXING_CONFIG = {
@@ -55,9 +57,6 @@ const INDEXING_CONFIG = {
   system_audio: config.system_audio_index || {},
   mic: config.mic_index || {},
 };
-
-// Status update interval (every N PreToolUse hooks)
-const STATUS_UPDATE_INTERVAL = config.status_update_interval || 3;
 
 // Claude CLI configuration: plugin defaults ← user overrides (config.claude section)
 function loadClaudeConfig() {
@@ -69,7 +68,7 @@ function loadClaudeConfig() {
   }
   var user = config.claude || {};
   return {
-    agent: user.agent || defaults.agent || "pair-programmer:trigger",
+    agent: user.agent || defaults.agent || "pair-programmer:cortex",
     maxTurns: user.max_turns || defaults.max_turns || 50,
     allowedTools: user.allowed_tools || defaults.allowed_tools || ["Read", "Write", "Task"],
     dangerouslySkipPermissions: user.dangerously_skip_permissions !== undefined
@@ -83,7 +82,6 @@ const CLAUDE_CONFIG = loadClaudeConfig();
 
 // Project root from env (set by hook scripts), fallback to cwd
 const PROJECT_ROOT = process.env.PROJECT_DIR || process.cwd();
-const CONTEXT_FILE = path.join(__dirname, ".context.json");
 const UI_DIR = path.join(__dirname, "ui");
 const BIN_DIR = path.join(__dirname, "bin");
 
@@ -96,7 +94,6 @@ const recordingState = new RecordingState();
 
 const defaultBufferSize = config.context_buffer_size || 50;
 const contextBuffer = new ContextBufferManager(recordingState, {
-  filePath: CONTEXT_FILE,
   bufferSizes: {
     screen: config.context_buffer_size_screen ?? defaultBufferSize,
     mic: config.context_buffer_size_mic ?? defaultBufferSize,
@@ -121,11 +118,11 @@ let wsConnection = null;
 // Runtime indexing config (overrides defaults from INDEXING_CONFIG)
 let runtimeIndexingConfig = null;
 
-// Claude Code session ID for the pair-programmer trigger session
+// Active claude child process (cortex agent) — tracked so we can kill on cancel/shutdown
+let claudeProcess = null;
 let claudeSessionId = null;
+let hookSocketServer = null;
 
-// Claude Code session ID for the status-updater session
-let statusSessionId = null;
 
 // =============================================================================
 // VideoDB SDK Integration
@@ -306,11 +303,8 @@ async function listenToWebSocketEvents() {
         });
         const startTs = ev.data?.start;
         if (startTs) {
-          const now = Date.now();
           const startMs = startTs > 1e12 ? startTs : startTs * 1000;
-          const latencyMs = Math.max(0, now - startMs);
-          console.log(`[Latency] startTs=${startTs} startMs=${startMs} now=${now} latency=${latencyMs}ms`);
-          recordingState.setVisualLatency(latencyMs);
+          recordingState.setVisualLatency(Math.max(0, Date.now() - startMs));
         }
       } else if (channel === "audio_index") {
         const text = ev.data?.text;
@@ -428,6 +422,7 @@ function handleGetStatus() {
     status: "ok",
     ...recordingState.toApiPayload(),
     claudeSessionId,
+    claudeProcessPid: claudeProcess ? claudeProcess.pid : null,
     bufferCounts: contextBuffer.getCounts(),
   };
 }
@@ -507,22 +502,6 @@ async function handleUpdatePrompt(body) {
   return { status: "ok", message: "Scene index prompt updated", index_type: indexType || "unknown" };
 }
 
-function handleSetClaudeSession(body) {
-  const id = body.session_id;
-  if (!id) return { status: "error", error: "session_id required" };
-  claudeSessionId = id;
-  console.log(`[API] Claude session stored: ${id}`);
-  return { status: "ok", claudeSessionId: id };
-}
-
-function handleHookEvent(body) {
-  const event = body.event;
-  if (!event) return { status: "error", error: "event required" };
-  console.log(`[API] Hook event: ${event} tool=${body.tool_name || ""}`);
-  overlayManager.pushHookEvent(body);
-  return { status: "ok" };
-}
-
 async function handlePermissionPrompt(body) {
   const toolName = body.tool_name || "Unknown";
   const toolInput = body.tool_input || {};
@@ -530,6 +509,21 @@ async function handlePermissionPrompt(body) {
   const decision = await overlayManager.showPermissionPrompt({ toolName, toolInput });
   console.log(`[API] Permission decision: ${decision}`);
   return { status: "ok", decision };
+}
+
+function killClaudeProcess(reason) {
+  if (!claudeProcess) return false;
+  const pid = claudeProcess.pid;
+  console.log(`[Assistant] Killing claude process PID ${pid} (${reason})`);
+  try {
+    process.kill(pid, "SIGTERM");
+    // Give it 2s to exit gracefully, then force-kill
+    setTimeout(() => {
+      try { process.kill(pid, "SIGKILL"); } catch (_) {}
+    }, 2000);
+  } catch (_) {}
+  claudeProcess = null;
+  return true;
 }
 
 function handleShutdown() {
@@ -570,8 +564,6 @@ function cleanupStaleBinary() {
 function startAPIServer() {
   killProcessOnPort(API_PORT);
   cleanupStaleBinary();
-  // Reset status update counter
-  try { fs.unlinkSync("/tmp/videodb-status-counter"); } catch (_) {}
   contextBuffer.cleanup();
   const server = http.createServer(async (req, res) => {
     const url = req.url.split("?")[0];
@@ -601,16 +593,6 @@ function startAPIServer() {
       "POST /api/overlay/show": () => overlayManager.show(body.text, { loading: body.loading }),
       "POST /api/overlay/hide": () => overlayManager.hide(),
       "GET /api/claude-session": () => ({ status: "ok", claudeSessionId }),
-      "POST /api/claude-session": () => handleSetClaudeSession(body),
-      "GET /api/status-session": () => ({ status: "ok", statusSessionId }),
-      "POST /api/status-session": () => {
-        const id = body.session_id;
-        if (!id) return { status: "error", error: "session_id required" };
-        statusSessionId = id;
-        console.log(`[API] Status session stored: ${id}`);
-        return { status: "ok", statusSessionId: id };
-      },
-      "POST /api/hook-event": () => handleHookEvent(body),
       "POST /api/permission-prompt": () => handlePermissionPrompt(body),
       "POST /api/shutdown": () => handleShutdown(),
       "POST /webhook": async () => {
@@ -654,6 +636,68 @@ function startAPIServer() {
   });
 
   apiHttpServer = server;
+}
+
+// =============================================================================
+// Unix Socket Server (fast IPC for hooks)
+// =============================================================================
+
+function startHookSocket() {
+  try { fs.unlinkSync(HOOK_SOCKET_PATH); } catch (_) {}
+
+  const server = net.createServer((conn) => {
+    let buf = "";
+    conn.on("data", (chunk) => { buf += chunk; });
+    conn.on("end", () => {
+      if (!buf.trim()) return;
+      try {
+        const data = JSON.parse(buf);
+        const event = data.hook_event_name || data.event;
+        if (!event) return;
+
+        // Build the overlay payload from raw hook data
+        let payload;
+        switch (event) {
+          case "PreToolUse":
+          case "PostToolUse":
+          case "PostToolUseFailure": {
+            let toolName = data.tool_name || "unknown";
+            let toolInput = data.tool_input || {};
+            const toolOutput = JSON.stringify(data.tool_output || "").substring(0, 300);
+
+            // Detect search curl commands and rewrite as a clean search event
+            if (toolName === "Bash" && typeof toolInput.command === "string" && toolInput.command.includes("rtstream/search")) {
+              toolName = "Search";
+              const qMatch = toolInput.command.match(/"query"\s*:\s*"([^"]+)"/);
+              toolInput = qMatch ? { query: qMatch[1] } : {};
+            }
+
+            payload = { event, tool_name: toolName, tool_input: JSON.stringify(toolInput).substring(0, 300), tool_output: toolOutput };
+            break;
+          }
+          case "Stop":
+            payload = { event, stop_reason: data.stop_reason || "end_turn" };
+            break;
+          default:
+            payload = { event };
+        }
+
+        overlayManager.pushHookEvent(payload);
+      } catch (_) {}
+    });
+    conn.on("error", () => {});
+  });
+
+  server.listen(HOOK_SOCKET_PATH, () => {
+    try { fs.chmodSync(HOOK_SOCKET_PATH, 0o666); } catch (_) {}
+    console.log(`✓ Hook socket listening on ${HOOK_SOCKET_PATH}`);
+  });
+
+  server.on("error", (e) => {
+    console.warn(`[HookSocket] Failed to start: ${e.message}`);
+  });
+
+  hookSocketServer = server;
 }
 
 // =============================================================================
@@ -770,8 +814,10 @@ function registerAssistantShortcut() {
       console.log(`[Assistant] Resuming session: ${claudeSessionId}`);
     } else {
       args.push("-p", triggerPrompt, "--output-format", "json");
-      console.log("[Assistant] Creating new session");
     }
+
+    // Kill any existing claude process before spawning a new one
+    killClaudeProcess("new shortcut activation");
 
     console.log(`[Assistant] claude ${args.join(" ")}`);
     let stdout = "";
@@ -781,12 +827,16 @@ function registerAssistantShortcut() {
       shell: false,
     });
 
+    claudeProcess = child;
+    console.log(`[Assistant] PID: ${child.pid}`);
+
     child.stdout.on("data", (chunk) => {
       stdout += chunk.toString();
     });
 
     child.on("error", (err) => {
       console.error("[Assistant] Failed to run claude:", err.message);
+      claudeProcess = null;
       new Notification({
         title: "Assistant Error",
         body: "Failed to run claude command",
@@ -794,17 +844,17 @@ function registerAssistantShortcut() {
     });
 
     child.on("close", (code) => {
-      console.log(`[Assistant] claude exited with code ${code}`);
-      console.log(`[Assistant] stdout: ${stdout.substring(0, 50)}`);
-      // Parse session_id from JSON output
+      claudeProcess = null;
       try {
         const result = JSON.parse(stdout);
         if (result.session_id && result.session_id !== claudeSessionId) {
           claudeSessionId = result.session_id;
-          console.log(`[Assistant] Session stored: ${claudeSessionId}`);
+          console.log(`[Assistant] session=${claudeSessionId} exit=${code}`);
+        } else {
+          console.log(`[Assistant] exit=${code}`);
         }
-      } catch (e) {
-        console.warn("[Assistant] Could not parse session_id from output:", e.message);
+      } catch (_) {
+        console.log(`[Assistant] exit=${code}`);
       }
     });
   });
@@ -825,11 +875,12 @@ function initClaudeSession() {
   if (process.env.PLUGIN_PATH) {
     args.push("--plugin-dir", process.env.PLUGIN_PATH);
   }
+  args.push("--agent", CLAUDE_CONFIG.agent);
   if (CLAUDE_CONFIG.dangerouslySkipPermissions) args.push("--dangerously-skip-permissions");
   for (const tool of CLAUDE_CONFIG.allowedTools) args.push("--allowedTools", tool);
   args.push("-p", "ok", "--output-format", "json");
 
-  console.log(`[ClaudeSession] claude ${args.join(" ")}`);
+  console.log(`[ClaudeSession] Creating session...`);
   let stdout = "";
   const child = spawn("claude", args, {
     cwd: PROJECT_ROOT,
@@ -850,8 +901,6 @@ function initClaudeSession() {
       console.warn(`[ClaudeSession] claude exited with code ${code}`);
       return;
     }
-    console.log(`[ClaudeSession] stdout: ${stdout}`);
-
     try {
       const result = JSON.parse(stdout);
       if (result.session_id) {
@@ -860,49 +909,6 @@ function initClaudeSession() {
       }
     } catch (e) {
       console.warn("[ClaudeSession] Could not parse session_id:", e.message);
-    }
-  });
-}
-
-function initStatusSession() {
-  const args = [];
-  if (process.env.PLUGIN_PATH) {
-    args.push("--plugin-dir", process.env.PLUGIN_PATH);
-  }
-  args.push("--agent", "pair-programmer:status-updater");
-  if (CLAUDE_CONFIG.dangerouslySkipPermissions) args.push("--dangerously-skip-permissions");
-  args.push("--allowedTools", "Bash");
-  args.push("-p", `You are the status-updater. recorder_port: ${API_PORT}. Acknowledge.`, "--output-format", "json");
-
-  console.log(`[StatusSession] claude ${args.join(" ")}`);
-  let stdout = "";
-  const child = spawn("claude", args, {
-    cwd: PROJECT_ROOT,
-    stdio: ["inherit", "pipe", "inherit"],
-    shell: false,
-  });
-
-  child.stdout.on("data", (chunk) => {
-    stdout += chunk.toString();
-  });
-
-  child.on("error", (err) => {
-    console.error("[StatusSession] Failed to create session:", err.message);
-  });
-
-  child.on("close", (code) => {
-    if (code !== 0) {
-      console.warn(`[StatusSession] claude exited with code ${code}`);
-      return;
-    }
-    try {
-      const result = JSON.parse(stdout);
-      if (result.session_id) {
-        statusSessionId = result.session_id;
-        console.log(`✓ Status session created: ${statusSessionId}`);
-      }
-    } catch (e) {
-      console.warn("[StatusSession] Could not parse session_id:", e.message);
     }
   });
 }
@@ -957,6 +963,7 @@ app.whenReady().then(async () => {
 
     // Start HTTP API server (needed before tunnel so port is listening)
     startAPIServer();
+    startHookSocket();
 
     // Setup webhook URL (from config or cloudflare tunnel) — must happen before createSession
     if (CONFIGURED_WEBHOOK_URL) {
@@ -1007,11 +1014,8 @@ app.whenReady().then(async () => {
     // Register global shortcut for assistant
     registerAssistantShortcut();
 
-    // Create a dedicated Claude Code session for the pair-programmer
+    // Pre-create a Claude session so shortcut can resume it
     initClaudeSession();
-
-    // Create a dedicated session for status updates
-    initStatusSession();
 
     overlayManager.showReady();
 
@@ -1046,9 +1050,17 @@ function withTimeout(promise, ms) {
 async function shutdownApp() {
   console.log("[Shutdown] Starting cleanup...");
 
+  killClaudeProcess("app shutdown");
   try { globalShortcut.unregisterAll(); } catch (_) {}
   try { if (trayManager) trayManager.destroy(); } catch (_) {}
   try { if (overlayManager) overlayManager.destroy(); } catch (_) {}
+
+  if (hookSocketServer) {
+    try { hookSocketServer.close(); } catch (_) {}
+    try { fs.unlinkSync(HOOK_SOCKET_PATH); } catch (_) {}
+    hookSocketServer = null;
+    console.log("[Shutdown] Hook socket closed");
+  }
 
   if (apiHttpServer) {
     try {

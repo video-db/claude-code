@@ -37,7 +37,7 @@ This will:
 | `/pair-programmer:record-status` | Check recorder and recording status |
 | `/pair-programmer:refresh-context` | Get current screen/audio/transcript context |
 | `/pair-programmer:what-happened` | Summarize recent activity |
-| `/pair-programmer:trigger` | AI assistant triggered via keyboard shortcut |
+| `/pair-programmer:cortex` | AI assistant triggered via keyboard shortcut |
 | `/pair-programmer:update` | Update npm dependencies (videodb SDK, electron) |
 
 ## How It Works

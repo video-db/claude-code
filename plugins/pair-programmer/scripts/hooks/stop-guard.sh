@@ -1,5 +1,5 @@
 #!/bin/bash
-# Stop guard hook for the pair-programmer trigger agent.
+# Stop guard hook for the pair-programmer cortex agent.
 # Reads the transcript to check if the agent sent a final overlay message.
 # If not, blocks the stop and tells the agent to continue.
 
@@ -7,22 +7,11 @@ set -euo pipefail
 
 INPUT=$(cat)
 LOG="/tmp/videodb-hooks.log"
-CONFIG_FILE="${HOME}/.config/videodb/config.json"
-PORT=$(jq -r '.recorder_port // 8899' "$CONFIG_FILE" 2>/dev/null)
-
-SESSION_ID=$(echo "$INPUT" | jq -r '.session_id // ""')
+SOCK="/tmp/videodb-hook.sock"
 TRANSCRIPT_PATH=$(echo "$INPUT" | jq -r '.transcript_path // ""')
 
-# Only guard the pair-programmer session
-if ! lsof -i :"$PORT" >/dev/null 2>&1; then
-  exit 0
-fi
-
-PAIR_SESSION=$(curl -s --max-time 2 "http://127.0.0.1:${PORT}/api/claude-session" 2>/dev/null | jq -r '.claudeSessionId // ""' 2>/dev/null)
-
-if [ -z "$PAIR_SESSION" ] || [ "$SESSION_ID" != "$PAIR_SESSION" ]; then
-  exit 0
-fi
+# Only guard if recorder is running (socket exists)
+[ -S "$SOCK" ] || exit 0
 
 echo "$(date -u +%Y-%m-%dT%H:%M:%SZ) [StopGuard] Checking transcript for final overlay call" >> "$LOG"
 

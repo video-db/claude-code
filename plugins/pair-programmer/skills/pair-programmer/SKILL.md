@@ -34,7 +34,7 @@ When a new session starts and the user hasn't requested anything specific, run `
 | `/pair-programmer:refresh-context` | Fetch and summarize all context |
 | `/pair-programmer:what-happened` | Summarize recent activity timeline |
 | `/pair-programmer:record-config` | Configure API key and settings |
-| `/pair-programmer:trigger` | Shortcut-triggered: analyze context, respond via overlay |
+| `/pair-programmer:cortex` | Shortcut-triggered: analyze context, respond via overlay |
 
 ---
 

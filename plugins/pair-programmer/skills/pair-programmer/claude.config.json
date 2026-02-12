@@ -1,5 +1,5 @@
 {
-  "agent": "pair-programmer:trigger",
+  "agent": "pair-programmer:cortex",
   "max_turns": 50,
   "allowed_tools": [
     "mcp__plugin_pair_programmer_recorder__*",
