@@ -657,7 +657,9 @@ function startHookSocket() {
 
         // Only show events from our cortex session
         const evtSession = data.session_id || data.sessionId;
-        if (evtSession && claudeSessionId && evtSession !== claudeSessionId) return;
+        if (evtSession) {
+          if (!claudeSessionId || evtSession !== claudeSessionId) return;
+        }
 
         // Build the overlay payload from raw hook data
         let payload;
