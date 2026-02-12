@@ -383,7 +383,7 @@ async function startRecording(selectedChannels, indexingConfigOverride = null) {
     };
     console.log("Starting capture with payload:", JSON.stringify(capturePayload, null, 2));
 
-    await captureClient.startCaptureSession(capturePayload);
+    await captureClient.startSession(capturePayload);
 
     return { status: "ok", sessionId: captureSession.id };
   } catch (e) {
@@ -398,7 +398,7 @@ async function stopRecording() {
   }
 
   try {
-    await captureClient.stopCaptureSession();
+    await captureClient.stopSession();
 
     const duration = recordingState.duration;
 
@@ -654,6 +654,10 @@ function startHookSocket() {
         const data = JSON.parse(buf);
         const event = data.hook_event_name || data.event;
         if (!event) return;
+
+        // Only show events from our cortex session
+        const evtSession = data.session_id || data.sessionId;
+        if (evtSession && claudeSessionId && evtSession !== claudeSessionId) return;
 
         // Build the overlay payload from raw hook data
         let payload;
@@ -1076,7 +1080,7 @@ async function shutdownApp() {
 
   if (captureClient) {
     try {
-      await withTimeout(captureClient.stopCaptureSession(), 3000);
+      await withTimeout(captureClient.stopSession(), 3000);
       console.log("[Shutdown] Capture session stopped");
     } catch (_) {}
     try {

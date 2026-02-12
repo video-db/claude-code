@@ -63,9 +63,9 @@ function apiRequest(method, apiPath, body) {
       });
     });
     req.on("error", (err) => reject(new Error(`Recorder not reachable: ${err.message}`)));
-    req.setTimeout(3000, () => {
+    req.setTimeout(30000, () => {
       req.destroy();
-      reject(new Error("Recorder request timed out (3s)"));
+      reject(new Error("Recorder request timed out (30s)"));
     });
     if (payload) req.write(payload);
     req.end();
