@@ -123,6 +123,10 @@ let claudeProcess = null;
 let claudeSessionId = null;
 let hookSocketServer = null;
 
+// Saved recording config — used to restart recording after a claude session retry
+let lastRecordingChannels = null;
+let lastRecordingIndexingConfig = null;
+
 
 // =============================================================================
 // VideoDB SDK Integration
@@ -374,6 +378,10 @@ async function startRecording(selectedChannels, indexingConfigOverride = null) {
         store: true,
       }));
     }
+
+    // Save config for potential restart after claude session retry
+    lastRecordingChannels = channels;
+    lastRecordingIndexingConfig = indexingConfigOverride;
 
     recordingState.setChannels(channels.map((c) => channelIdToDisplayName(c.channelId)));
 
@@ -877,6 +885,13 @@ function registerAssistantShortcut() {
 
   const registered = globalShortcut.register(shortcut, () => {
     console.log(`[Assistant] Shortcut ${shortcut} triggered`);
+
+    if (!claudeSessionId) {
+      console.error("[Assistant] No claude session available");
+      overlayManager.show("**No Claude session available.**\n\nSession was not created during startup. Restart the recorder to try again.");
+      return;
+    }
+
     overlayManager.show("", { loading: true });
 
     const args = [];
@@ -890,12 +905,8 @@ function registerAssistantShortcut() {
     args.push("--max-turns", String(CLAUDE_CONFIG.maxTurns));
 
     const triggerPrompt = `User triggered the assistant shortcut. recorder_port: ${API_PORT}`;
-    if (claudeSessionId) {
-      args.push("-r", claudeSessionId, "-p", triggerPrompt, "--output-format", "json");
-      console.log(`[Assistant] Resuming session: ${claudeSessionId}`);
-    } else {
-      args.push("-p", triggerPrompt, "--output-format", "json");
-    }
+    args.push("-r", claudeSessionId, "-p", triggerPrompt, "--output-format", "json");
+    console.log(`[Assistant] Resuming session: ${claudeSessionId}`);
 
     // Kill any existing claude process before spawning a new one
     killClaudeProcess("new shortcut activation");
@@ -962,36 +973,86 @@ function initClaudeSession() {
   args.push("-p", "ok", "--output-format", "json");
 
   console.log(`[ClaudeSession] Creating session...`);
-  let stdout = "";
-  const child = spawn("claude", args, {
-    cwd: PROJECT_ROOT,
-    stdio: ["inherit", "pipe", "inherit"],
-    shell: false,
-  });
 
-  child.stdout.on("data", (chunk) => {
-    stdout += chunk.toString();
-  });
+  return new Promise((resolve) => {
+    let stdout = "";
+    let stderr = "";
+    const child = spawn("claude", args, {
+      cwd: PROJECT_ROOT,
+      stdio: ["inherit", "pipe", "pipe"],
+      shell: false,
+    });
 
-  child.on("error", (err) => {
-    console.error("[ClaudeSession] Failed to create session:", err.message);
-  });
+    child.stdout.on("data", (chunk) => { stdout += chunk.toString(); });
+    child.stderr.on("data", (chunk) => { stderr += chunk.toString(); });
 
-  child.on("close", (code) => {
-    if (code !== 0) {
-      console.warn(`[ClaudeSession] claude exited with code ${code}`);
+    child.on("error", (err) => {
+      resolve({ success: false, error: err.message, stdout, stderr });
+    });
+
+    child.on("close", (code) => {
+      if (code !== 0) {
+        resolve({ success: false, code, stdout, stderr });
+        return;
+      }
+      try {
+        const result = JSON.parse(stdout);
+        if (result.session_id) {
+          claudeSessionId = result.session_id;
+          console.log(`✓ Claude session created: ${claudeSessionId}`);
+          resolve({ success: true });
+        } else {
+          resolve({ success: false, code, stdout, stderr, error: "No session_id in response" });
+        }
+      } catch (e) {
+        resolve({ success: false, code, stdout, stderr, error: e.message });
+      }
+    });
+  });
+}
+
+async function initClaudeSessionWithRetry() {
+  while (true) {
+    const result = await initClaudeSession();
+
+    if (result.success) {
+      // If recording was previously stopped due to session failure, restart it
+      if (lastRecordingChannels && !recordingState.active) {
+        console.log("[ClaudeSession] Restarting recording after successful retry...");
+        try {
+          await startRecording(lastRecordingChannels, lastRecordingIndexingConfig);
+        } catch (e) {
+          console.error("[ClaudeSession] Failed to restart recording:", e.message);
+        }
+      }
       return;
     }
-    try {
-      const result = JSON.parse(stdout);
-      if (result.session_id) {
-        claudeSessionId = result.session_id;
-        console.log(`✓ Claude session created: ${claudeSessionId}`);
-      }
-    } catch (e) {
-      console.warn("[ClaudeSession] Could not parse session_id:", e.message);
+
+    // Build error details
+    const errorOutput = result.stderr || result.stdout || result.error || "Unknown error";
+    const exitCode = result.code != null ? result.code : "N/A";
+
+    // Log full details to hook log
+    hookLog(
+      `[ClaudeSession] FAILED (exit ${exitCode}) ` +
+      `stdout: ${result.stdout || "(empty)"} ` +
+      `stderr: ${result.stderr || "(empty)"} ` +
+      `error: ${result.error || "(none)"}`
+    );
+
+    // Stop recording if it was active
+    if (recordingState.active) {
+      console.log("[ClaudeSession] Stopping active recording due to session failure...");
+      await stopRecording();
     }
-  });
+
+    // Show error overlay and block until user clicks Retry
+    await overlayManager.showClaudeError(
+      `Exit code: ${exitCode}\n\n${errorOutput}`
+    );
+
+    console.log("[ClaudeSession] User requested retry...");
+  }
 }
 
 // =============================================================================
@@ -1038,9 +1099,10 @@ app.whenReady().then(async () => {
     startHookSocket();
 
     // ── Phase 2: Parallel — VideoDB connection + Claude session ──
-    // Both are independent; Claude session runs during the slow tunnel wait
-    initClaudeSession();
-    const connected = await initializeVideoDB();
+    // Start VDB init immediately; claude session blocks until success (with retry UI)
+    const connectedPromise = initializeVideoDB();
+    await initClaudeSessionWithRetry();
+    const connected = await connectedPromise;
     if (!connected) {
       new Notification({
         title: "VideoDB Recorder",

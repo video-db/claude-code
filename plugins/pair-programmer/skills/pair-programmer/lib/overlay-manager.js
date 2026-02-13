@@ -73,6 +73,25 @@ class OverlayManager {
     this._window.webContents.send("hook-event", data);
   }
 
+  showClaudeError(errorText) {
+    console.log(`[Overlay] Claude session error`);
+    const win = this._ensureWindow();
+    win.show();
+
+    const payload = { error: errorText };
+    const send = () => win.webContents.send("claude-error", payload);
+    win.webContents.once("did-finish-load", send);
+    if (!win.webContents.isLoading()) send();
+
+    return new Promise((resolve) => {
+      const handler = () => {
+        ipcMain.removeListener("claude-error-retry", handler);
+        resolve();
+      };
+      ipcMain.on("claude-error-retry", handler);
+    });
+  }
+
   showPermissionPrompt({ toolName, toolInput }) {
     console.log(`[Overlay] Permission prompt: ${toolName}`);
     const win = this._ensureWindow();
@@ -103,6 +122,7 @@ class OverlayManager {
     ipcMain.removeAllListeners("overlay-close");
     ipcMain.removeAllListeners("overlay-resize");
     ipcMain.removeAllListeners("permission-response");
+    ipcMain.removeAllListeners("claude-error-retry");
     if (this._permissionResolve) {
       this._permissionResolve("deny");
       this._permissionResolve = null;
