@@ -76,6 +76,7 @@ function loadClaudeConfig() {
       : defaults.dangerously_skip_permissions !== undefined
         ? defaults.dangerously_skip_permissions
         : true,
+    defaultModel: user.default_model || defaults.default_model || "sonnet",
   };
 }
 const CLAUDE_CONFIG = loadClaudeConfig();
@@ -126,6 +127,9 @@ let hookSocketServer = null;
 // Saved recording config — used to restart recording after a claude session retry
 let lastRecordingChannels = null;
 let lastRecordingIndexingConfig = null;
+
+// Runtime model selection — mutable via overlay dropdown
+let runtimeModel = CLAUDE_CONFIG.defaultModel;
 
 
 // =============================================================================
@@ -900,6 +904,7 @@ function registerAssistantShortcut() {
     }
 
     args.push("--agent", CLAUDE_CONFIG.agent);
+    args.push("--model", runtimeModel);
     if (CLAUDE_CONFIG.dangerouslySkipPermissions) args.push("--dangerously-skip-permissions");
     for (const tool of CLAUDE_CONFIG.allowedTools) args.push("--allowedTools", tool);
     args.push("--max-turns", String(CLAUDE_CONFIG.maxTurns));
@@ -962,17 +967,11 @@ function registerAssistantShortcut() {
 // Claude Session Init
 // =============================================================================
 
+// Lightweight haiku handshake — no agent, no MCP, just get a session_id
 function initClaudeSession() {
-  const args = [];
-  if (process.env.PLUGIN_PATH) {
-    args.push("--plugin-dir", process.env.PLUGIN_PATH);
-  }
-  args.push("--agent", CLAUDE_CONFIG.agent);
-  if (CLAUDE_CONFIG.dangerouslySkipPermissions) args.push("--dangerously-skip-permissions");
-  for (const tool of CLAUDE_CONFIG.allowedTools) args.push("--allowedTools", tool);
-  args.push("-p", "ok", "--output-format", "json");
+  const args = ["-p", "hi", "--model", "haiku", "--max-turns", "1", "--output-format", "json"];
 
-  console.log(`[ClaudeSession] Creating session...`);
+  console.log(`[ClaudeSession] Creating session (haiku handshake)...`);
 
   return new Promise((resolve) => {
     let stdout = "";
@@ -1008,6 +1007,41 @@ function initClaudeSession() {
         resolve({ success: false, code, stdout, stderr, error: e.message });
       }
     });
+  });
+}
+
+// Async warm-up: resume the bare session with full cortex agent + MCP (fire-and-forget)
+function warmUpClaudeSession() {
+  if (!claudeSessionId) return;
+
+  const args = [];
+  if (process.env.PLUGIN_PATH) {
+    args.push("--plugin-dir", process.env.PLUGIN_PATH);
+  }
+  args.push("--agent", CLAUDE_CONFIG.agent);
+  args.push("--model", runtimeModel);
+  if (CLAUDE_CONFIG.dangerouslySkipPermissions) args.push("--dangerously-skip-permissions");
+  for (const tool of CLAUDE_CONFIG.allowedTools) args.push("--allowedTools", tool);
+  args.push("--max-turns", String(CLAUDE_CONFIG.maxTurns));
+  args.push("-r", claudeSessionId, "-p", `Session initialized. recorder_port: ${API_PORT}`, "--output-format", "json");
+
+  console.log(`[ClaudeSession] Warming up with cortex agent (model=${runtimeModel}, async)...`);
+
+  const child = spawn("claude", args, {
+    cwd: PROJECT_ROOT,
+    stdio: ["inherit", "pipe", "inherit"],
+    shell: false,
+  });
+
+  let stdout = "";
+  child.stdout.on("data", (chunk) => { stdout += chunk.toString(); });
+
+  child.on("close", (code) => {
+    console.log(`[ClaudeSession] Warm-up complete (exit ${code})`);
+  });
+
+  child.on("error", (err) => {
+    console.warn("[ClaudeSession] Warm-up failed:", err.message);
   });
 }
 
@@ -1059,13 +1093,12 @@ async function initClaudeSessionWithRetry() {
 // App Lifecycle
 // =============================================================================
 
-// Hide dock icon (menu bar app)
-if (process.platform === "darwin") {
-  app.dock.hide();
-}
-
 app.whenReady().then(async () => {
   try {
+    // Hide dock icon (menu bar app)
+    if (process.platform === "darwin") {
+      app.dock.hide();
+    }
     // Initialize managers
     pickerManager = new PickerManager({ uiDir: UI_DIR });
     overlayManager = new OverlayManager(recordingState, {
@@ -1086,6 +1119,15 @@ app.whenReady().then(async () => {
       return { [type]: contextBuffer.getRecent(type, 50) };
     });
 
+    // IPC: model selection from overlay dropdown
+    ipcMain.on("model-change", (_, model) => {
+      if (["haiku", "sonnet", "opus"].includes(model)) {
+        runtimeModel = model;
+        console.log(`[Model] Switched to: ${runtimeModel}`);
+        overlayManager.pushModelConfig(runtimeModel);
+      }
+    });
+
     console.log("Starting VideoDB Recorder...");
     console.log("Config:", {
       apiKey: API_KEY ? `${API_KEY.substring(0, 10)}...` : "NOT SET",
@@ -1099,9 +1141,12 @@ app.whenReady().then(async () => {
     startHookSocket();
 
     // ── Phase 2: Parallel — VideoDB connection + Claude session ──
-    // Start VDB init immediately; claude session blocks until success (with retry UI)
+    // Haiku handshake blocks (fast), then cortex warm-up runs async
     const connectedPromise = initializeVideoDB();
     await initClaudeSessionWithRetry();
+    overlayManager.showReady(); // show shortcut hint immediately; cortex warm-up will overwrite
+    overlayManager.pushModelConfig(runtimeModel); // send initial model to overlay dropdown
+    warmUpClaudeSession();
     const connected = await connectedPromise;
     if (!connected) {
       new Notification({
@@ -1128,16 +1173,27 @@ app.whenReady().then(async () => {
     }
 
     if (webhookUrl) {
-      console.log("Waiting 5s for webhook URL to stabilize...");
-      await new Promise((r) => setTimeout(r, 5000));
-
       const baseUrl = webhookUrl.replace(/\/webhook$/, "");
-      try {
-        const resp = await fetch(`${baseUrl}/api`);
-        const data = await resp.json();
-        console.log(`✓ Webhook URL verified: ${baseUrl}/api →`, JSON.stringify(data));
-      } catch (e) {
-        console.warn(`⚠ Webhook URL verification failed (${baseUrl}/api):`, e.message);
+      const verifyStart = Date.now();
+      const MAX_VERIFY_MS = 10000;
+      const RETRY_MS = 500;
+      let verified = false;
+
+      console.log("Verifying webhook URL...");
+      while (Date.now() - verifyStart < MAX_VERIFY_MS) {
+        try {
+          const resp = await fetch(`${baseUrl}/api/status`);
+          await resp.json();
+          console.log(`✓ Webhook URL verified in ${Date.now() - verifyStart}ms`);
+          verified = true;
+          break;
+        } catch (_) {
+          await new Promise((r) => setTimeout(r, RETRY_MS));
+        }
+      }
+
+      if (!verified) {
+        console.warn(`⚠ Webhook URL verification failed after ${MAX_VERIFY_MS}ms`);
       }
     }
 
@@ -1156,8 +1212,6 @@ app.whenReady().then(async () => {
 
     trayManager.markStartupComplete();
     registerAssistantShortcut();
-
-    overlayManager.showReady();
 
     new Notification({
       title: "VideoDB Recorder",

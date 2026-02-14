@@ -38,6 +38,19 @@
     }
     .close-btn:hover { background: rgba(255,255,255,0.12); color: #ccc; }
 
+    /* ─── Model Dropdown ─── */
+    .model-select {
+      -webkit-app-region: no-drag;
+      background: rgba(255,255,255,0.06); color: #888;
+      border: 1px solid rgba(255,255,255,0.08); border-radius: 5px;
+      font-size: 10px; font-weight: 500; padding: 2px 4px;
+      cursor: pointer; outline: none; transition: all 0.15s;
+      font-family: inherit;
+    }
+    .model-select:hover { background: rgba(255,255,255,0.1); color: #ccc; }
+    .model-select:focus { border-color: rgba(10,132,255,0.5); }
+    .model-select option { background: #1a1a1a; color: #ccc; }
+
     /* ─── Toggle Bar ─── */
     .toggle-bar {
       display: flex; gap: 2px; margin-bottom: 8px; flex-shrink: 0;
@@ -187,9 +200,26 @@
     }
     .activity-clear-btn:hover { color: #888; }
     .activity-item {
-      display: flex; align-items: center; gap: 5px; padding: 2px 0;
-      font-size: 11px; color: #999; position: relative; cursor: default;
+      display: flex; align-items: center; gap: 5px; padding: 2px 4px;
+      font-size: 11px; color: #999; position: relative; cursor: pointer;
+      border-radius: 4px; transition: background 0.12s;
     }
+    .activity-item:hover { background: rgba(255,255,255,0.04); }
+    .activity-expand {
+      display: none; padding: 6px 8px; margin: 1px 0 3px 18px;
+      background: rgba(0, 0, 0, 0.25); border-radius: 5px;
+      border-left: 2px solid rgba(255,255,255,0.06);
+      font-family: 'SF Mono', Menlo, Monaco, monospace;
+      font-size: 10px; line-height: 1.5; color: #999;
+      white-space: pre-wrap; word-break: break-all; max-height: 120px; overflow-y: auto;
+    }
+    .activity-expand.visible { display: block; }
+    .activity-expand::-webkit-scrollbar { width: 3px; }
+    .activity-expand::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.08); border-radius: 2px; }
+    .activity-expand .exp-label { color: #555; font-size: 9px; text-transform: uppercase; letter-spacing: 0.3px; }
+    .activity-expand .exp-value { color: #bbb; margin-bottom: 4px; }
+    .activity-expand .exp-value:last-child { margin-bottom: 0; }
+    .activity-expand .exp-error { color: #ff453a; }
     .activity-icon {
       width: 14px; height: 14px; display: flex; align-items: center;
       justify-content: center; flex-shrink: 0; font-size: 10px;
@@ -223,25 +253,6 @@
       vertical-align: middle; line-height: 1.3;
     }
     .activity-badge.mcp { background: rgba(191, 90, 242, 0.2); color: #bf5af2; }
-    /* ─── Activity tooltip ─── */
-    .activity-tooltip {
-      display: none; position: fixed; z-index: 9999;
-      background: #1e1e1e; border: 1px solid rgba(255,255,255,0.1);
-      border-radius: 6px; padding: 8px 10px; max-width: 360px; min-width: 160px;
-      font-size: 10px; color: #ccc; line-height: 1.5;
-      font-family: 'SF Mono', Menlo, Monaco, monospace;
-      box-shadow: 0 4px 16px rgba(0,0,0,0.5); pointer-events: none;
-      word-break: break-word; white-space: pre-wrap;
-    }
-    .activity-tooltip.visible { display: block; }
-    .activity-tooltip .tt-label { color: #666; font-size: 9px; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 2px; }
-    .activity-tooltip .tt-value { color: #ddd; margin-bottom: 6px; }
-    .activity-tooltip .tt-value:last-child { margin-bottom: 0; }
-    .activity-tooltip .tt-error { color: #ff453a; }
-    .activity-tooltip .tt-status { font-weight: 600; margin-bottom: 6px; }
-    .activity-tooltip .tt-status.running { color: #0a84ff; }
-    .activity-tooltip .tt-status.done { color: #30d158; }
-    .activity-tooltip .tt-status.fail { color: #ff453a; }
     /* ─── Running agents strip ─── */
     .running-agents {
       display: none; flex-shrink: 0; gap: 4px; flex-wrap: wrap;
@@ -435,6 +446,11 @@
     <div class="header">
       <span class="title">🧞 Pair Programmer</span>
       <div style="display:flex;gap:6px;align-items:center;-webkit-app-region:no-drag;">
+        <select class="model-select" id="modelSelect" onchange="onModelChange(this.value)">
+          <option value="haiku">haiku</option>
+          <option value="sonnet" selected>sonnet</option>
+          <option value="opus">opus</option>
+        </select>
         <button class="close-btn" onclick="closeOverlay()">×</button>
       </div>
     </div>
@@ -493,8 +509,6 @@
         </div>
       </div>
     </div>
-
-    <div class="activity-tooltip" id="activityTooltip"></div>
 
     <div class="permission-prompt" id="permissionPrompt">
       <div class="permission-title">🔐 Permission Request</div>
@@ -707,8 +721,11 @@
     ];
     var loadingWordTimer = null;
     function startLoadingWords() {
-      stopLoadingWords(); rotateWord();
-      loadingWordTimer = setInterval(rotateWord, 2500 + Math.random() * 1500);
+      stopLoadingWords();
+      function scheduleNext() {
+        loadingWordTimer = setTimeout(function() { rotateWord(); scheduleNext(); }, 4000 + Math.random() * 3000);
+      }
+      scheduleNext();
     }
     function stopLoadingWords() { if (loadingWordTimer) { clearInterval(loadingWordTimer); loadingWordTimer = null; } }
     function rotateWord() {
@@ -880,8 +897,7 @@
           '<div class="activity-label"><span class="activity-tool-name">'+prettifyToolName(tn)+'</span>' +
           '<span class="activity-detail">'+escapeHtml(detail)+'</span></div>' +
           '<span class="activity-duration" id="activity-dur-'+seq+'"></span>';
-        el.addEventListener('mouseenter', showActivityTooltip);
-        el.addEventListener('mouseleave', hideActivityTooltip);
+        (function(s) { el.addEventListener('click', function() { toggleActivityDetail(s); }); })(seq);
         list.appendChild(el); scrollEl.scrollTop = scrollEl.scrollHeight;
         activityItems[seq].timer = setInterval(function() {
           var d = document.getElementById('activity-dur-'+seq);
@@ -1042,7 +1058,36 @@
         if (k.length) { var v=String(i[k[0]]); return v.length>50?v.substring(0,47)+'...':v; }
       } catch(e) {} return '';
     }
-    function formatTooltipInput(tn, raw) {
+    /* ─── Activity expand/collapse ─── */
+    function toggleActivityDetail(seq) {
+      var id = 'activity-exp-' + seq;
+      var existing = document.getElementById(id);
+      if (existing) { existing.classList.toggle('visible'); return; }
+
+      var it = activityItems[seq]; if (!it) return;
+      var panel = document.createElement('div');
+      panel.className = 'activity-expand visible'; panel.id = id;
+
+      var html = '';
+      // Input
+      var inp = formatExpandInput(it.toolName, it.input);
+      if (inp) html += '<div class="exp-label">Input</div><div class="exp-value">' + escapeHtml(inp) + '</div>';
+      // Output / error
+      if (it.output && it.status !== 'running') {
+        var out = it.output;
+        try { out = JSON.parse(out); } catch(_) {}
+        if (typeof out === 'object') out = JSON.stringify(out, null, 2);
+        out = String(out); if (out.length > 500) out = out.substring(0, 497) + '…';
+        var cls = it.status === 'fail' ? ' exp-error' : '';
+        html += '<div class="exp-label">' + (it.status === 'fail' ? 'Error' : 'Output') + '</div><div class="exp-value' + cls + '">' + escapeHtml(out) + '</div>';
+      }
+      if (!html) html = '<div class="exp-value" style="color:#444">No details available</div>';
+      panel.innerHTML = html;
+
+      var el = document.getElementById('activity-' + seq);
+      if (el) el.after(panel);
+    }
+    function formatExpandInput(tn, raw) {
       try {
         var i = typeof raw === 'string' ? JSON.parse(raw) : raw;
         if (!i || typeof i !== 'object') return raw || '';
@@ -1054,45 +1099,6 @@
         });
         return lines.join('\n');
       } catch(e) { return String(raw || '').substring(0, 300); }
-    }
-    function showActivityTooltip(e) {
-      var el = e.currentTarget, seq = el.dataset.seq;
-      var it = activityItems[seq]; if (!it) return;
-      var tt = document.getElementById('activityTooltip');
-      var html = '';
-      // Status
-      var statusLabel = it.status === 'running' ? '● Running' : it.status === 'done' ? '✓ Completed' : '✗ Failed';
-      html += '<div class="tt-status ' + it.status + '">' + statusLabel;
-      if (it.elapsed) html += ' (' + it.elapsed + 's)';
-      html += '</div>';
-      // Tool name
-      html += '<div class="tt-label">Tool</div><div class="tt-value">' + escapeHtml(it.toolName) + '</div>';
-      // Input
-      var inp = formatTooltipInput(it.toolName, it.input);
-      if (inp) html += '<div class="tt-label">Input</div><div class="tt-value">' + escapeHtml(inp) + '</div>';
-      // Output / error (only for finished)
-      if (it.output && it.status !== 'running') {
-        var out = it.output;
-        try { out = JSON.parse(out); } catch(_) {}
-        if (typeof out === 'object') out = JSON.stringify(out, null, 2);
-        out = String(out);
-        if (out.length > 400) out = out.substring(0, 397) + '…';
-        var lbl = it.status === 'fail' ? 'Error' : 'Output';
-        var cls = it.status === 'fail' ? ' tt-error' : '';
-        html += '<div class="tt-label">' + lbl + '</div><div class="tt-value' + cls + '">' + escapeHtml(out) + '</div>';
-      }
-      tt.innerHTML = html;
-      // Position: above the item, aligned left
-      var rect = el.getBoundingClientRect();
-      var ttW = 360, ttH = tt.offsetHeight || 100;
-      tt.classList.add('visible');
-      var left = Math.max(4, Math.min(rect.left, window.innerWidth - ttW - 8));
-      var top = rect.top - tt.offsetHeight - 6;
-      if (top < 4) top = rect.bottom + 6;
-      tt.style.left = left + 'px'; tt.style.top = top + 'px';
-    }
-    function hideActivityTooltip() {
-      document.getElementById('activityTooltip').classList.remove('visible');
     }
 
     /* ─── Permission ─── */
@@ -1116,6 +1122,15 @@
     function retryClaudeSession() {
       document.getElementById('claudeError').classList.remove('visible');
       ipcRenderer.send('claude-error-retry');
+    }
+
+    /* ─── Model Selection ─── */
+    ipcRenderer.on('model-config', (event, data) => {
+      var sel = document.getElementById('modelSelect');
+      if (data.current) sel.value = data.current;
+    });
+    function onModelChange(model) {
+      ipcRenderer.send('model-change', model);
     }
 
     /* ─── Window Resize ─── */

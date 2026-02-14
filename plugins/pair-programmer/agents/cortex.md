@@ -1,7 +1,6 @@
 ---
 name: cortex
 description: Pair-programmer orchestrator triggered by keyboard shortcut. The brain — correlates sense agent reports, decides what to explore, commands targeted follow-ups, synthesizes final answer.
-model: sonnet
 tools: Read, Write, Task(code-eye, voice, hearing, narrator)
 mcpServers: recorder
 permissionMode: bypassPermissions

@@ -1,5 +1,6 @@
 {
   "agent": "pair-programmer:cortex",
+  "default_model": "sonnet",
   "max_turns": 50,
   "allowed_tools": [
     "mcp__plugin_pair_programmer_recorder__*",

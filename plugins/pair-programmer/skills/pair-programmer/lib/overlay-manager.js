@@ -73,6 +73,14 @@ class OverlayManager {
     this._window.webContents.send("hook-event", data);
   }
 
+  pushModelConfig(current) {
+    if (!this._window || this._window.isDestroyed()) return;
+    this._window.webContents.send("model-config", {
+      current,
+      available: ["haiku", "sonnet", "opus"],
+    });
+  }
+
   showClaudeError(errorText) {
     console.log(`[Overlay] Claude session error`);
     const win = this._ensureWindow();
@@ -123,6 +131,7 @@ class OverlayManager {
     ipcMain.removeAllListeners("overlay-resize");
     ipcMain.removeAllListeners("permission-response");
     ipcMain.removeAllListeners("claude-error-retry");
+    ipcMain.removeAllListeners("model-change");
     if (this._permissionResolve) {
       this._permissionResolve("deny");
       this._permissionResolve = null;
