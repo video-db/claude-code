@@ -14,7 +14,7 @@ function matchDisplayToChannel(displayLabel, videoChannels) {
   const found = videoChannels.find(
     (c) => normalized(c.name) === label || normalized(c.extras?.name) === label
   );
-  return found ? found.channelId : null;
+  return found ? found.id : null;
 }
 
 function rtstreamNameToDisplayName(nameOrChannelId) {

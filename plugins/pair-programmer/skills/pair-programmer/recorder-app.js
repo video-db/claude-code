@@ -52,6 +52,7 @@ const API_PORT = config.recorder_port || process.env.RECORDER_PORT || 8899;
 const HOOK_SOCKET_PATH = "/tmp/videodb-hook.sock";
 
 // Indexing configuration from config file
+// model_name per channel: valid options are mini, basic, pro, ultra
 const INDEXING_CONFIG = {
   visual: config.visual_index || {},
   system_audio: config.system_audio_index || {},
@@ -231,9 +232,10 @@ async function startIndexingForRTStreams(rtstreams) {
               value: indexingConfig.visual.batch_time, 
               frameCount: indexingConfig.visual.frame_count 
             },
-            modelName: "mini",
+            modelName: indexingConfig.visual.model_name || "mini",
             socketId: wsConnection.connectionId,
           };
+          console.log("This is visualOpts", visualOpts)
           const sceneIndex = await rtstream.indexVisuals(visualOpts);
           if (sceneIndex && rtstreamEntry) {
             rtstreamEntry.scene_index_id = sceneIndex.rtstreamIndexId;
@@ -259,6 +261,7 @@ async function startIndexingForRTStreams(rtstreams) {
               type: streamConfig.batch_type, 
               value: streamConfig.batch_value 
             },
+            modelName: streamConfig.model_name || "mini",
             socketId: wsConnection.connectionId,
           };
           const audioIndex = await rtstream.indexAudio(audioOpts);
@@ -369,14 +372,12 @@ async function startRecording(selectedChannels, indexingConfigOverride = null) {
     // Use selected or default channels
     let channels = selectedChannels;
     if (!channels) {
-      const mic = availableChannels.find((c) => c.channelId === "mic:default");
-      const systemAudio = availableChannels.find(
-        (c) => c.channelId === "system_audio:default"
-      );
-      const display = availableChannels.find((c) => c.type === "video");
+      const mic = availableChannels.mics.default;
+      const systemAudio = availableChannels.systemAudio.default;
+      const display = availableChannels.displays.default;
 
       channels = [mic, systemAudio, display].filter(Boolean).map((c) => ({
-        channelId: c.channelId,
+        channelId: c.id,
         type: c.type,
         record: true,
         store: true,
@@ -445,7 +446,7 @@ async function handleStartRecord(body) {
     let videoChannels = [];
     try {
       const available = await captureClient.listChannels();
-      videoChannels = (available || []).filter((c) => c.type === "video");
+      videoChannels = Array.from(available.displays || []);
     } catch (e) {
       console.warn("[API] listChannels failed, picker will use fallback:", e.message);
     }
