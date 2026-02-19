@@ -78,6 +78,12 @@ You can also just describe what you want -- Claude will load the skill automatic
 ```
 /videodb generate 30 seconds of background music and overlay it on my video
 ```
+```
+/videodb capture my screen and transcribe it in real-time
+```
+```
+/videodb record my next meeting and summarize it with action items
+```
 
 ---
 
