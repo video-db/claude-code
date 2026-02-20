@@ -28,7 +28,7 @@
         "name": "VideoDB",
         "email": "support@videodb.io"
       },
-      "source": "./plugins/videodb",
+      "source": "./plugins/skills/videodb",
       "category": "development",
       "keywords": ["video", "videodb", "search", "editor", "capture", "transcription", "python"]
     }

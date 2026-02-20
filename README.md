@@ -41,7 +41,7 @@
 | Plugin | Description |
 |--------|-------------|
 | [pair-programmer](./plugins/pair-programmer/README.md) | AI pair programmer with real-time screen and audio context |
-| [videodb](./plugins/videodb/README.md) | Process videos using VideoDB Python SDK — upload, search, edit, and capture |
+| [videodb](./plugins/skills/videodb/README.md) | Process videos using VideoDB Python SDK — upload, search, edit, and capture |
 
 ### Install a plugin
 

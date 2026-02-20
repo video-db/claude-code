@@ -40,7 +40,7 @@ Talk to your videos using natural language. Upload, search, edit, generate subti
 
 ### 2. Add your API key
 
-Create a `.env` file inside the skill directory (`skills/videodb/.env`):
+Create a `.env` file inside the skill directory (`.env`):
 
 ```ini
 VIDEO_DB_API_KEY=your-api-key-here
@@ -95,8 +95,8 @@ You can use VideoDB with Claude on the web by giving it the SDK reference as pro
 
 1. Create a new [Claude Project](https://claude.ai)
 2. In the project knowledge, add the contents of these files:
-   - [`SKILL.md`](skills/videodb/SKILL.md) -- core SDK reference and quick-start patterns
-   - [`REFERENCE.md`](skills/videodb/REFERENCE.md) -- full API reference
+   - [`SKILL.md`](./SKILL.md) -- core SDK reference and quick-start patterns
+   - [`REFERENCE.md`](./REFERENCE.md) -- full API reference
 3. Set the project system prompt to:
 
 ```
@@ -176,36 +176,32 @@ print(message.content[0].text)
 ## Project Structure
 
 ```
-plugins/videodb/
-├── .claude-plugin/
-│   └── plugin.json           # Plugin manifest
-├── .gitignore
+plugins/skills/videodb/
+├── SKILL.md              # Skill definition (loaded by Claude Code)
+├── REFERENCE.md          # Complete API reference
+├── SEARCH.md             # Search and indexing guide
+├── EDITOR.md             # Timeline editing guide
+├── GENERATIVE.md         # AI generation guide
+├── MEETINGS.md           # Meeting recording and analysis
+├── RTSTREAM.md           # Real-time streaming guide
+├── CAPTURE.md            # Real-time capture architecture guide
+├── USE_CASES.md          # End-to-end workflow examples
 ├── README.md
-└── skills/
-    └── videodb/
-        ├── SKILL.md              # Skill definition (loaded by Claude Code)
-        ├── REFERENCE.md          # Complete API reference
-        ├── SEARCH.md             # Search and indexing guide
-        ├── EDITOR.md             # Timeline editing guide
-        ├── GENERATIVE.md         # AI generation guide
-        ├── MEETINGS.md           # Meeting recording and analysis
-        ├── RTSTREAM.md           # Real-time streaming guide
-        ├── CAPTURE.md            # Real-time capture architecture guide
-        ├── USE_CASES.md          # End-to-end workflow examples
-        ├── requirements.txt      # Python dependencies
-        ├── .env.example          # Environment variable template
-        └── scripts/
-            ├── setup_venv.py         # Virtual environment setup
-            ├── setup.py              # Dependency checker
-            ├── check_connection.py   # API key verification
-            ├── batch_upload.py       # Bulk upload from URL list or directory
-            ├── search_and_compile.py # Search + compile into stream
-            ├── extract_clips.py      # Extract clips by timestamp
-            ├── backend.py            # Capture backend (Flask + Cloudflare tunnel)
-            ├── client.py             # Capture client (screen + audio recording)
-            ├── test_editor.py        # Integration test: timeline editing
-            ├── test_meetings.py      # Integration test: meeting analysis
-            └── test_rtstream.py      # Integration test: streaming
+├── .gitignore
+├── requirements.txt      # Python dependencies
+├── .env.example          # Environment variable template
+└── scripts/
+    ├── setup_venv.py         # Virtual environment setup
+    ├── setup.py              # Dependency checker
+    ├── check_connection.py   # API key verification
+    ├── batch_upload.py       # Bulk upload from URL list or directory
+    ├── search_and_compile.py # Search + compile into stream
+    ├── extract_clips.py      # Extract clips by timestamp
+    ├── backend.py            # Capture backend (Flask + Cloudflare tunnel)
+    ├── client.py             # Capture client (screen + audio recording)
+    ├── test_editor.py        # Integration test: timeline editing
+    ├── test_meetings.py      # Integration test: meeting analysis
+    └── test_rtstream.py      # Integration test: streaming
 ```
 
 ---
@@ -214,15 +210,15 @@ plugins/videodb/
 
 | Guide | What's Inside |
 |---|---|
-| [SKILL.md](skills/videodb/SKILL.md) | Skill definition and quick reference |
-| [REFERENCE.md](skills/videodb/REFERENCE.md) | Complete API reference for all objects and methods |
-| [SEARCH.md](skills/videodb/SEARCH.md) | Semantic, keyword, and scene-based search |
-| [EDITOR.md](skills/videodb/EDITOR.md) | Timeline editing with overlays, limitations |
-| [GENERATIVE.md](skills/videodb/GENERATIVE.md) | AI-generated images, video, music, voice, and text |
-| [MEETINGS.md](skills/videodb/MEETINGS.md) | Meeting recording, transcription, and analysis |
-| [RTSTREAM.md](skills/videodb/RTSTREAM.md) | Real-time HLS streaming |
-| [CAPTURE.md](skills/videodb/CAPTURE.md) | Real-time capture architecture and AI pipelines |
-| [USE_CASES.md](skills/videodb/USE_CASES.md) | End-to-end workflow examples |
+| [SKILL.md](./SKILL.md) | Skill definition and quick reference |
+| [REFERENCE.md](./REFERENCE.md) | Complete API reference for all objects and methods |
+| [SEARCH.md](./SEARCH.md) | Semantic, keyword, and scene-based search |
+| [EDITOR.md](./EDITOR.md) | Timeline editing with overlays, limitations |
+| [GENERATIVE.md](./GENERATIVE.md) | AI-generated images, video, music, voice, and text |
+| [MEETINGS.md](./MEETINGS.md) | Meeting recording, transcription, and analysis |
+| [RTSTREAM.md](./RTSTREAM.md) | Real-time HLS streaming |
+| [CAPTURE.md](./CAPTURE.md) | Real-time capture architecture and AI pipelines |
+| [USE_CASES.md](./USE_CASES.md) | End-to-end workflow examples |
 
 ---
 
@@ -245,13 +241,13 @@ The plugin includes a ready-to-run capture setup powered by the [VideoDB Capture
 
 The backend automatically creates a Cloudflare tunnel for the webhook URL. The client requests device permissions, discovers channels, and begins streaming. Press Enter in the client terminal to stop recording.
 
-See [CAPTURE.md](skills/videodb/CAPTURE.md) for the full architecture guide, AI pipeline setup, and webhook event handling.
+See [CAPTURE.md](./CAPTURE.md) for the full architecture guide, AI pipeline setup, and webhook event handling.
 
 ---
 
 ## Utility Scripts
 
-Run these from the `skills/videodb/` directory:
+Run these from the `plugins/skills/videodb/` directory:
 
 ```bash
 # Upload multiple files from a URL list
