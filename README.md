@@ -20,7 +20,7 @@
     <br />
     <a href="#available-plugins">View Plugins</a>
     ·
-    <a href="https://github.com/video-db/claude-code/issues">Report Issues</a>
+    <a href="https://github.com/video-db/claude-code-plugins/issues">Report Issues</a>
   </p>
 </p>
 
@@ -30,7 +30,7 @@
 
 ```bash
 # Add the marketplace
-/plugin marketplace add video-db/claude-code
+/plugin marketplace add video-db/claude-code-plugins
 
 # List available plugins
 /plugin marketplace list videodb
@@ -72,7 +72,7 @@ claude --plugin-dir ~/videodb/claude-code/plugins/pair-programmer
 ## Community & Support
 
 - **Docs**: [docs.videodb.io](https://docs.videodb.io)
-- **Issues**: [GitHub Issues](https://github.com/video-db/claude-code/issues)
+- **Issues**: [GitHub Issues](https://github.com/video-db/claude-code-plugins/issues)
 - **Discord**: [Join community](https://discord.gg/py9P639jGz)
 - **Console**: [Get API key](https://console.videodb.io)
 
@@ -83,9 +83,9 @@ claude --plugin-dir ~/videodb/claude-code/plugins/pair-programmer
 ---
 
 <!-- MARKDOWN LINKS & IMAGES -->
-[stars-shield]: https://img.shields.io/github/stars/video-db/claude-code.svg?style=for-the-badge
-[stars-url]: https://github.com/video-db/claude-code/stargazers
-[issues-shield]: https://img.shields.io/github/issues/video-db/claude-code.svg?style=for-the-badge
-[issues-url]: https://github.com/video-db/claude-code/issues
+[stars-shield]: https://img.shields.io/github/stars/video-db/claude-code-plugins.svg?style=for-the-badge
+[stars-url]: https://github.com/video-db/claude-code-plugins/stargazers
+[issues-shield]: https://img.shields.io/github/issues/video-db/claude-code-plugins.svg?style=for-the-badge
+[issues-url]: https://github.com/video-db/claude-code-plugins/issues
 [website-shield]: https://img.shields.io/website?url=https%3A%2F%2Fvideodb.io%2F&style=for-the-badge&label=videodb.io
 [website-url]: https://videodb.io/

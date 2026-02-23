@@ -16,7 +16,7 @@ https://github.com/user-attachments/assets/24f25eff-2af1-4048-9bbb-8d1d09559ebb
 
 ```bash
 # Add VideoDB marketplace (one-time)
-/plugin marketplace add video-db/claude-code
+/plugin marketplace add video-db/claude-code-plugins
 
 # Install Pair Programmer
 /plugin install pair-programmer@videodb
@@ -160,7 +160,7 @@ After installation, a tray icon appears in your menu bar with options:
 
 ## Community & Support
 
-- **Plugin Issues**: [Claude Code Repository](https://github.com/video-db/claude-code/issues)
+- **Plugin Issues**: [Claude Code Repository](https://github.com/video-db/claude-code-plugins/issues)
 - **VideoDB SDK Issues**: [VideoDB Capture Quickstart](https://github.com/video-db/videodb-capture-quickstart/issues)
 - **Documentation**: [docs.videodb.io](https://docs.videodb.io)
 - **Discord**: [Join community](https://discord.gg/py9P639jGz)

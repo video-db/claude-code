@@ -8,5 +8,6 @@
   },
   "repository": "https://github.com/video-db/claude-code-plugins",
   "license": "MIT",
-  "keywords": ["video", "videodb", "search", "editor", "capture", "transcription", "python"]
+  "keywords": ["video", "videodb", "search", "editor", "capture", "transcription", "python"],
+  "skills": "./skills"
 }

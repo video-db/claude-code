@@ -1,8 +1,11 @@
 {
-  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
   "name": "videodb",
   "version": "1.0.0",
   "description": "VideoDB plugins for Claude Code — screen recording, real-time context, and AI pair programming",
+  "metadata": {
+    "description": "VideoDB plugins for AI pair programming and video processing",
+    "pluginRoot": "./plugins"
+  },
   "owner": {
     "name": "VideoDB",
     "email": "support@videodb.io"
@@ -16,7 +19,7 @@
         "name": "VideoDB",
         "email": "support@videodb.io"
       },
-      "source": "./plugins/pair-programmer",
+      "source": "./pair-programmer",
       "category": "development",
       "keywords": ["recording", "screen-capture", "pair-programming", "videodb", "context"]
     },
@@ -28,7 +31,7 @@
         "name": "VideoDB",
         "email": "support@videodb.io"
       },
-      "source": "./plugins/skills/videodb",
+      "source": "./skills/videodb",
       "category": "development",
       "keywords": ["video", "videodb", "search", "editor", "capture", "transcription", "python"]
     }

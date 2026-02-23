@@ -34,7 +34,7 @@ Talk to your videos using natural language. Upload, search, edit, generate subti
 ### 1. Install the plugin
 
 ```
-/plugin marketplace add video-db/claude-code
+/plugin marketplace add video-db/claude-code-plugins
 /plugin install videodb@videodb
 ```
 
@@ -51,15 +51,15 @@ VIDEO_DB_API_KEY=your-api-key-here
 The skill auto-runs setup on first use, or you can trigger it manually:
 
 ```
-/videodb setup the virtual environment
+/videodb:python setup the virtual environment
 ```
 
-This runs `scripts/setup_venv.py` which creates a `.venv/` and installs all dependencies from `requirements.txt`.
+This runs `skills/python/scripts/setup_venv.py` which creates a `.venv/` and installs all dependencies from `skills/python/requirements.txt`.
 
 ### 4. Start using it
 
 ```
-/videodb upload this YouTube video and give me a transcript
+/videodb:python upload this YouTube video and give me a transcript
 ```
 
 You can also just describe what you want -- Claude will load the skill automatically when the task involves video processing.
@@ -67,22 +67,22 @@ You can also just describe what you want -- Claude will load the skill automatic
 **More examples:**
 
 ```
-/videodb search for "product demo" in my latest video
+/videodb:python search for "product demo" in my latest video
 ```
 ```
-/videodb add subtitles to my video with white text on black background
+/videodb:python add subtitles to my video with white text on black background
 ```
 ```
-/videodb take clips from 10s-30s and 45s-60s, add a title card, and combine them
+/videodb:python take clips from 10s-30s and 45s-60s, add a title card, and combine them
 ```
 ```
-/videodb generate 30 seconds of background music and overlay it on my video
+/videodb:python generate 30 seconds of background music and overlay it on my video
 ```
 ```
-/videodb capture my screen and transcribe it in real-time
+/videodb:python capture my screen and transcribe it in real-time
 ```
 ```
-/videodb record my next meeting and summarize it with action items
+/videodb:python record my next meeting and summarize it with action items
 ```
 
 ---
@@ -95,8 +95,8 @@ You can use VideoDB with Claude on the web by giving it the SDK reference as pro
 
 1. Create a new [Claude Project](https://claude.ai)
 2. In the project knowledge, add the contents of these files:
-   - [`SKILL.md`](./SKILL.md) -- core SDK reference and quick-start patterns
-   - [`REFERENCE.md`](./REFERENCE.md) -- full API reference
+   - [`skills/python/SKILL.md`](./skills/python/SKILL.md) -- core SDK reference and quick-start patterns
+   - [`skills/python/REFERENCE.md`](./skills/python/REFERENCE.md) -- full API reference
 3. Set the project system prompt to:
 
 ```
@@ -127,7 +127,7 @@ Use the VideoDB skill as a system prompt for programmatic access via the [Anthro
 
 ### Setup
 
-1. Read `SKILL.md` and `REFERENCE.md` into your system prompt
+1. Read `skills/python/SKILL.md` and `skills/python/REFERENCE.md` into your system prompt
 2. Send user messages describing video tasks
 3. Execute the generated Python code in your environment
 
@@ -137,9 +137,9 @@ Use the VideoDB skill as a system prompt for programmatic access via the [Anthro
 import anthropic
 
 # Load the skill reference as system context
-with open("SKILL.md") as f:
+with open("skills/python/SKILL.md") as f:
     skill_context = f.read()
-with open("REFERENCE.md") as f:
+with open("skills/python/REFERENCE.md") as f:
     reference_context = f.read()
 
 client = anthropic.Anthropic()
@@ -166,10 +166,10 @@ print(message.content[0].text)
 
 ### Tips
 
-- Include `SEARCH.md` or `EDITOR.md` in the system prompt when your use case focuses on search or editing
-- Add `CAPTURE.md` when your use case involves real-time screen/audio capture
-- For token efficiency, use only `SKILL.md` for general tasks -- it covers the most common operations
-- Add `GENERATIVE.md` when you need AI-generated media (images, music, voice)
+- Include `skills/python/SEARCH.md` or `skills/python/EDITOR.md` in the system prompt when your use case focuses on search or editing
+- Add `skills/python/CAPTURE.md` when your use case involves real-time screen/audio capture
+- For token efficiency, use only `skills/python/SKILL.md` for general tasks -- it covers the most common operations
+- Add `skills/python/GENERATIVE.md` when you need AI-generated media (images, music, voice)
 
 ---
 
@@ -177,31 +177,33 @@ print(message.content[0].text)
 
 ```
 plugins/skills/videodb/
-├── SKILL.md              # Skill definition (loaded by Claude Code)
-├── REFERENCE.md          # Complete API reference
-├── SEARCH.md             # Search and indexing guide
-├── EDITOR.md             # Timeline editing guide
-├── GENERATIVE.md         # AI generation guide
-├── MEETINGS.md           # Meeting recording and analysis
-├── RTSTREAM.md           # Real-time streaming guide
-├── CAPTURE.md            # Real-time capture architecture guide
-├── USE_CASES.md          # End-to-end workflow examples
 ├── README.md
 ├── .gitignore
-├── requirements.txt      # Python dependencies
-├── .env.example          # Environment variable template
-└── scripts/
-    ├── setup_venv.py         # Virtual environment setup
-    ├── setup.py              # Dependency checker
-    ├── check_connection.py   # API key verification
-    ├── batch_upload.py       # Bulk upload from URL list or directory
-    ├── search_and_compile.py # Search + compile into stream
-    ├── extract_clips.py      # Extract clips by timestamp
-    ├── backend.py            # Capture backend (Flask + Cloudflare tunnel)
-    ├── client.py             # Capture client (screen + audio recording)
-    ├── test_editor.py        # Integration test: timeline editing
-    ├── test_meetings.py      # Integration test: meeting analysis
-    └── test_rtstream.py      # Integration test: streaming
+└── skills/
+    └── python/
+        ├── SKILL.md              # Skill definition (loaded by Claude Code)
+        ├── REFERENCE.md          # Complete API reference
+        ├── SEARCH.md             # Search and indexing guide
+        ├── EDITOR.md             # Timeline editing guide
+        ├── GENERATIVE.md         # AI generation guide
+        ├── MEETINGS.md           # Meeting recording and analysis
+        ├── RTSTREAM.md           # Real-time streaming guide
+        ├── CAPTURE.md            # Real-time capture architecture guide
+        ├── USE_CASES.md          # End-to-end workflow examples
+        ├── requirements.txt      # Python dependencies
+        ├── .env.example          # Environment variable template
+        └── scripts/
+            ├── setup_venv.py         # Virtual environment setup
+            ├── setup.py              # Dependency checker
+            ├── check_connection.py   # API key verification
+            ├── batch_upload.py       # Bulk upload from URL list or directory
+            ├── search_and_compile.py # Search + compile into stream
+            ├── extract_clips.py      # Extract clips by timestamp
+            ├── backend.py            # Capture backend (Flask + Cloudflare tunnel)
+            ├── client.py             # Capture client (screen + audio recording)
+            ├── test_editor.py        # Integration test: timeline editing
+            ├── test_meetings.py      # Integration test: meeting analysis
+            └── test_rtstream.py      # Integration test: streaming
 ```
 
 ---
@@ -210,15 +212,15 @@ plugins/skills/videodb/
 
 | Guide | What's Inside |
 |---|---|
-| [SKILL.md](./SKILL.md) | Skill definition and quick reference |
-| [REFERENCE.md](./REFERENCE.md) | Complete API reference for all objects and methods |
-| [SEARCH.md](./SEARCH.md) | Semantic, keyword, and scene-based search |
-| [EDITOR.md](./EDITOR.md) | Timeline editing with overlays, limitations |
-| [GENERATIVE.md](./GENERATIVE.md) | AI-generated images, video, music, voice, and text |
-| [MEETINGS.md](./MEETINGS.md) | Meeting recording, transcription, and analysis |
-| [RTSTREAM.md](./RTSTREAM.md) | Real-time HLS streaming |
-| [CAPTURE.md](./CAPTURE.md) | Real-time capture architecture and AI pipelines |
-| [USE_CASES.md](./USE_CASES.md) | End-to-end workflow examples |
+| [SKILL.md](./skills/python/SKILL.md) | Skill definition and quick reference |
+| [REFERENCE.md](./skills/python/REFERENCE.md) | Complete API reference for all objects and methods |
+| [SEARCH.md](./skills/python/SEARCH.md) | Semantic, keyword, and scene-based search |
+| [EDITOR.md](./skills/python/EDITOR.md) | Timeline editing with overlays, limitations |
+| [GENERATIVE.md](./skills/python/GENERATIVE.md) | AI-generated images, video, music, voice, and text |
+| [MEETINGS.md](./skills/python/MEETINGS.md) | Meeting recording, transcription, and analysis |
+| [RTSTREAM.md](./skills/python/RTSTREAM.md) | Real-time HLS streaming |
+| [CAPTURE.md](./skills/python/CAPTURE.md) | Real-time capture architecture and AI pipelines |
+| [USE_CASES.md](./skills/python/USE_CASES.md) | End-to-end workflow examples |
 
 ---
 
@@ -226,22 +228,22 @@ plugins/skills/videodb/
 
 The plugin includes a ready-to-run capture setup powered by the [VideoDB Capture SDK](https://github.com/video-db/videodb-capture-quickstart). It uses a two-process model:
 
-- **`scripts/backend.py`** -- Flask server with a Cloudflare tunnel that creates capture sessions, handles webhook events, and starts AI pipelines (transcription, audio indexing, visual indexing)
-- **`scripts/client.py`** -- Captures screen, mic, and system audio using `CaptureClient` and streams to VideoDB for real-time processing
+- **`skills/python/scripts/backend.py`** -- Flask server with a Cloudflare tunnel that creates capture sessions, handles webhook events, and starts AI pipelines (transcription, audio indexing, visual indexing)
+- **`skills/python/scripts/client.py`** -- Captures screen, mic, and system audio using `CaptureClient` and streams to VideoDB for real-time processing
 
 ### Quick start
 
 ```bash
 # Terminal 1: start the backend
-.venv/bin/python scripts/backend.py
+.venv/bin/python skills/python/scripts/backend.py
 
 # Terminal 2: start the client
-.venv/bin/python scripts/client.py
+.venv/bin/python skills/python/scripts/client.py
 ```
 
 The backend automatically creates a Cloudflare tunnel for the webhook URL. The client requests device permissions, discovers channels, and begins streaming. Press Enter in the client terminal to stop recording.
 
-See [CAPTURE.md](./CAPTURE.md) for the full architecture guide, AI pipeline setup, and webhook event handling.
+See [CAPTURE.md](./skills/python/CAPTURE.md) for the full architecture guide, AI pipeline setup, and webhook event handling.
 
 ---
 
@@ -251,19 +253,19 @@ Run these from the `plugins/skills/videodb/` directory:
 
 ```bash
 # Upload multiple files from a URL list
-.venv/bin/python scripts/batch_upload.py --urls urls.txt --collection "My Project"
+.venv/bin/python skills/python/scripts/batch_upload.py --urls urls.txt --collection "My Project"
 
 # Search inside a video and compile results
-.venv/bin/python scripts/search_and_compile.py --video-id VIDEO_ID --query "product demo"
+.venv/bin/python skills/python/scripts/search_and_compile.py --video-id VIDEO_ID --query "product demo"
 
 # Extract clips by timestamp ranges
-.venv/bin/python scripts/extract_clips.py --video-id VIDEO_ID --timestamps "10.0-25.0,45.0-60.0"
+.venv/bin/python skills/python/scripts/extract_clips.py --video-id VIDEO_ID --timestamps "10.0-25.0,45.0-60.0"
 
 # Start the capture backend (Flask + Cloudflare tunnel)
-.venv/bin/python scripts/backend.py
+.venv/bin/python skills/python/scripts/backend.py
 
 # Start the capture client (screen + audio recording)
-.venv/bin/python scripts/client.py
+.venv/bin/python skills/python/scripts/client.py
 ```
 
 ---
