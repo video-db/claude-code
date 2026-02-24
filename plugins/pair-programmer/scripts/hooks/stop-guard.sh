@@ -2,24 +2,24 @@
 # Stop guard hook for the pair-programmer cortex agent.
 # Reads the transcript to check if the agent sent a final overlay message.
 # If not, blocks the stop and tells the agent to continue.
-
-set -euo pipefail
+# NOTE: This runs on EVERY Stop event (all sessions), so it must exit silently
+# for non-cortex sessions and when the recorder isn't running.
 
 INPUT=$(cat)
 LOG="/tmp/videodb-hooks.log"
 SOCK="/tmp/videodb-hook.sock"
 CONFIG_FILE="${HOME}/.config/videodb/config.json"
-PORT=$(jq -r '.recorder_port // 8899' "$CONFIG_FILE" 2>/dev/null)
+PORT=$(jq -r '.recorder_port // 8899' "$CONFIG_FILE" 2>/dev/null || echo 8899)
 
 # Only guard if recorder is running (socket exists)
 [ -S "$SOCK" ] || exit 0
 
 # Get session IDs — hook input has this session's ID, API has the cortex session ID
-HOOK_SESSION=$(echo "$INPUT" | jq -r '.session_id // ""')
-CORTEX_SESSION=$(curl -s "http://127.0.0.1:${PORT}/api/claude-session" 2>/dev/null | jq -r '.claudeSessionId // ""')
+HOOK_SESSION=$(echo "$INPUT" | jq -r '.session_id // ""' 2>/dev/null || true)
+CORTEX_SESSION=$(curl -s --connect-timeout 2 "http://127.0.0.1:${PORT}/api/claude-session" 2>/dev/null | jq -r '.claudeSessionId // ""' 2>/dev/null || true)
 
 # Only guard the cortex session — skip all other sessions
-if [ -z "$CORTEX_SESSION" ] || [ "$HOOK_SESSION" != "$CORTEX_SESSION" ]; then
+if [ -z "$CORTEX_SESSION" ] || [ -z "$HOOK_SESSION" ] || [ "$HOOK_SESSION" != "$CORTEX_SESSION" ]; then
   exit 0
 fi
 
