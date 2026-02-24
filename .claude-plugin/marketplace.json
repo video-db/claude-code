@@ -1,9 +1,9 @@
 {
-  "name": "videodb",
+  "name": "claude-code",
   "version": "1.0.0",
-  "description": "VideoDB plugins for Claude Code — screen recording, real-time context, and AI pair programming",
+  "description": "Claude Code plugin marketplace",
   "metadata": {
-    "description": "VideoDB plugins for AI pair programming and video processing"
+    "description": "Marketplace for Claude Code plugins"
   },
   "owner": {
     "name": "VideoDB",
@@ -21,18 +21,6 @@
       "source": "./plugins/pair-programmer",
       "category": "development",
       "keywords": ["recording", "screen-capture", "pair-programming", "videodb", "context"]
-    },
-    {
-      "name": "videodb",
-      "description": "Process videos using VideoDB Python SDK — upload, transcode, search, edit, and capture real-time screen and audio",
-      "version": "1.0.0",
-      "author": {
-        "name": "VideoDB",
-        "email": "support@videodb.io"
-      },
-      "source": "./plugins/skills/videodb",
-      "category": "development",
-      "keywords": ["video", "videodb", "search", "editor", "capture", "transcription", "python"]
     }
   ]
 }
