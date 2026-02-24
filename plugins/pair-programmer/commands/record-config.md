@@ -63,16 +63,15 @@ Show one MCQ: "Which setting would you like to change?" with **all** of these op
 
 1. **`videodb_api_key`** — Your VideoDB API key for authentication. (current: e.g. `sk-***xyz`)
 2. **`videodb_backend_url`** — API endpoint. (current: e.g. `https://api.videodb.io`)
-3. **`webhook_url`** — Webhook URL for callbacks; empty = auto-tunnel. (current: e.g. empty or URL)
-4. **`recorder_port`** — HTTP API port for recorder. (current: e.g. `8899`)
-5. **`context_buffer_size`** — Max context items kept. (current: e.g. `50`)
-6. **`assistant_shortcut`** — Global shortcut for assistant. (current: e.g. `CommandOrControl+Shift+A`)
-7. **VideoDB Indexing Configuration** — Screen, system audio, and mic indexing (prompts, batching). → goes to Level 2
-8. **Done** — Finish and save (then go to Step 4).
+3. **`recorder_port`** — HTTP API port for recorder. (current: e.g. `8899`)
+4. **`context_buffer_size`** — Max context items kept. (current: e.g. `50`)
+5. **`assistant_shortcut`** — Global shortcut for assistant. (current: e.g. `CommandOrControl+Shift+A`)
+6. **VideoDB Indexing Configuration** — Screen, system audio, and mic indexing (prompts, batching). → goes to Level 2
+7. **Done** — Finish and save (then go to Step 4).
 
-If they pick 1–6: show what it does, current value (mask if secret), ask for new value or "keep current". Then show **Level 1 MCQ again** with all 8 options.
+If they pick 1–5: show what it does, current value (mask if secret), ask for new value or "keep current". Then show **Level 1 MCQ again** with all 7 options.
 
-If they pick 7: go to **Level 2**. If they pick 8: save config and proceed.
+If they pick 6: go to **Level 2**. If they pick 7: save config and proceed.
 
 ---
 
@@ -108,7 +107,6 @@ Location: `~/.config/videodb/config.json`
   "setup": true,
   "videodb_api_key": "sk-xxx",
   "videodb_backend_url": "https://api.videodb.io",
-  "webhook_url": "",
   "recorder_port": 8899,
   "context_buffer_size": 50,
   "context_buffer_size_screen": 50,
@@ -125,7 +123,6 @@ Location: `~/.config/videodb/config.json`
 |-------|-------------|---------|
 | `videodb_api_key` | VideoDB API key (required). Mask in UI. | — |
 | `videodb_backend_url` | API endpoint | https://api.videodb.io |
-| `webhook_url` | Webhook URL (empty = auto-tunnel) | "" |
 | `recorder_port` | Recorder HTTP API port | 8899 |
 | `context_buffer_size` | Default max context items (used if per-type not set) | 50 |
 | `context_buffer_size_screen` | Max screen context items (FIFO queue length) | value of `context_buffer_size` |

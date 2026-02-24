@@ -1,6 +1,26 @@
 const path = require("path");
 const { BrowserWindow, screen, ipcMain } = require("electron");
 
+const READY_MESSAGE = `## Hi there!
+
+I'm your AI pair programmer. I can see your screen and hear your audio when you're recording.
+
+To get started, use \`/pair-programmer:record\` to begin recording.
+
+Once recording, I'll be able to:
+- Answer questions about your code
+- Debug errors you encounter
+- Suggest improvements
+- Help you build features
+
+Speak your question, then hit **{{shortcut}}** — I'll take it from there.`;
+
+function formatShortcut(accelerator) {
+  return accelerator
+    .replace("CommandOrControl", process.platform === "darwin" ? "Cmd" : "Ctrl")
+    .replace(/\+/g, " + ");
+}
+
 class OverlayManager {
   constructor(recState, { assistantShortcut, uiDir } = {}) {
     this._window = null;
@@ -62,10 +82,11 @@ class OverlayManager {
   }
 
   showReady() {
-    const message = this._shortcut
-      ? `Ask your question in the mic, then press ${this._shortcut} to let me answer it.`
-      : "Set assistant_shortcut in config to use the assistant.";
-    this.show(message);
+    if (!this._shortcut) {
+      this.show("Set `assistant_shortcut` in config to use the assistant.");
+      return;
+    }
+    this.show(READY_MESSAGE.replace("{{shortcut}}", formatShortcut(this._shortcut)));
   }
 
   pushHookEvent(data) {

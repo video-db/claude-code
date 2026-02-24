@@ -463,7 +463,7 @@
       <button class="toggle-btn" id="tog-context" onclick="togglePanel('context')">
         📡 Context <span class="toggle-notif" id="notif-context"></span>
       </button>
-      <button class="toggle-btn active" id="tog-activity" onclick="togglePanel('activity')">
+      <button class="toggle-btn" id="tog-activity" onclick="togglePanel('activity')">
         ⚡ Activity <span class="toggle-notif" id="notif-activity"></span>
       </button>
     </div>
@@ -497,7 +497,7 @@
         </div>
       </div>
 
-      <div class="panel open" id="panel-activity">
+      <div class="panel" id="panel-activity">
         <div class="activity-top-row">
           <button class="activity-clear-btn" onclick="clearActivityFeed()">clear</button>
         </div>
@@ -554,7 +554,7 @@
     /* ═══════════════════════════════════════════
        Panel state — order: overlay → context → activity (top to bottom)
        ═══════════════════════════════════════════ */
-    var panelOpen = { overlay: false, context: false, activity: true };
+    var panelOpen = { overlay: false, context: false, activity: false };
     var PANEL_ORDER = ['overlay', 'context', 'activity'];
 
     function togglePanel(name) {

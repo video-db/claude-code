@@ -18,7 +18,6 @@ const RecordingState = require("./lib/recording-state");
 const ContextBufferManager = require("./lib/context-buffer");
 const OverlayManager = require("./lib/overlay-manager");
 const TrayManager = require("./lib/tray-manager");
-const TunnelManager = require("./lib/tunnel-manager");
 const PickerManager = require("./lib/picker-manager");
 const {
   channelIdToDisplayName,
@@ -47,7 +46,6 @@ function loadConfig() {
 const config = loadConfig();
 const API_KEY = config.videodb_api_key || process.env.VIDEO_DB_API_KEY;
 const BASE_URL = config.videodb_backend_url || "https://api.videodb.io";
-const CONFIGURED_WEBHOOK_URL = config.webhook_url || "";
 const API_PORT = config.recorder_port || process.env.RECORDER_PORT || 8899;
 const HOOK_SOCKET_PATH = "/tmp/videodb-hook.sock";
 
@@ -85,7 +83,6 @@ const CLAUDE_CONFIG = loadClaudeConfig();
 // Project root from env (set by hook scripts), fallback to cwd
 const PROJECT_ROOT = process.env.PROJECT_DIR || process.cwd();
 const UI_DIR = path.join(__dirname, "ui");
-const BIN_DIR = path.join(__dirname, "bin");
 
 
 // =============================================================================
@@ -103,9 +100,6 @@ const contextBuffer = new ContextBufferManager(recordingState, {
   },
 });
 
-const tunnelManager = new TunnelManager(BIN_DIR);
-
-let webhookUrl = null;
 let apiHttpServer = null;
 let overlayManager = null;
 let trayManager = null;
@@ -158,24 +152,30 @@ async function createSession() {
     throw new Error("Not connected to VideoDB");
   }
 
-  // Build session config
+  // Establish WebSocket — reconnect if stale (API Gateway drops idle connections after ~10min)
+  if (!wsConnection || !wsConnection.isConnected) {
+    if (wsConnection) {
+      try { await wsConnection.close(); } catch (_) {}
+      wsConnection = null;
+    }
+    wsConnection = await conn.connectWebsocket();
+    await wsConnection.connect();
+    console.log(`✓ WebSocket connected: ${wsConnection.connectionId}`);
+    listenToWebSocketEvents();
+  }
+
   const sessionConfig = {
     endUserId: "electron_user",
     metadata: { app: "vdb-recorder-demo" },
+    wsConnectionId: wsConnection.connectionId,
   };
-
-  if (webhookUrl) {
-    sessionConfig.callbackUrl = webhookUrl;
-  }
 
   captureSession = await conn.createCaptureSession(sessionConfig);
 
   // Generate client token
   const token = await conn.generateClientToken(3600); // 1 hour
-
   // Create capture client with token and base URL
   captureClient = new CaptureClient({ sessionToken: token, apiUrl: BASE_URL });
-
 
   console.log(`✓ Session created: ${captureSession.id}`);
   return { sessionId: captureSession.id, token };
@@ -188,15 +188,12 @@ async function startIndexingForRTStreams(rtstreams) {
       return;
     }
 
-    // Connect WebSocket for receiving indexing results
-    wsConnection = await conn.connectWebsocket();
-    await wsConnection.connect();
-    console.log(`✓ WebSocket connected: ${wsConnection.connectionId}`);
+    if (!wsConnection) {
+      console.error("[Indexing] WebSocket not connected, cannot start indexing");
+      return;
+    }
 
-    // Get collection to fetch RTStream objects (await is required!)
     const coll = await conn.getCollection();
-
-    // Get effective indexing config (defaults + runtime overrides)
     const indexingConfig = getIndexingConfig(INDEXING_CONFIG, runtimeIndexingConfig);
 
     for (const stream of rtstreams) {
@@ -209,17 +206,14 @@ async function startIndexingForRTStreams(rtstreams) {
         continue;
       }
 
-      // Find matching entry in recordingState.rtstreams to enrich with index ID
       const rtstreamEntry = (recordingState.rtstreams || []).find(
         (r) => r.rtstream_id === rtstream_id
       );
 
       try {
-        // Get RTStream object from collection
         const rtstream = await coll.getRTStream(rtstream_id);
 
         if (mediaTypes.includes("video")) {
-          // Visual indexing for video/display streams
           if (!indexingConfig.visual.enabled) {
             console.log(`[Indexing] Visual indexing disabled, skipping ${name}`);
             continue;
@@ -235,7 +229,6 @@ async function startIndexingForRTStreams(rtstreams) {
             modelName: indexingConfig.visual.model_name || "mini",
             socketId: wsConnection.connectionId,
           };
-          console.log("This is visualOpts", visualOpts)
           const sceneIndex = await rtstream.indexVisuals(visualOpts);
           if (sceneIndex && rtstreamEntry) {
             rtstreamEntry.scene_index_id = sceneIndex.rtstreamIndexId;
@@ -245,7 +238,6 @@ async function startIndexingForRTStreams(rtstreams) {
             console.log(`✓ Visual index created for ${name} (index: ${sceneIndex.rtstreamIndexId})`);
           }
         } else if (mediaTypes.includes("audio")) {
-          // Determine if this is mic or system_audio based on stream name
           const isMic = name.toLowerCase().includes("mic");
           const streamConfig = isMic ? indexingConfig.mic : indexingConfig.system_audio;
           const indexType = isMic ? "mic" : "system_audio";
@@ -279,23 +271,24 @@ async function startIndexingForRTStreams(rtstreams) {
         console.error(`[Indexing] Failed to start indexing for ${rtstream_id}:`, e.message);
       }
     }
-
-    // Listen to WebSocket events for indexing results
-    listenToWebSocketEvents();
-    
   } catch (e) {
     console.error("[Indexing] Failed to start indexing:", e.message, e.stack);
   }
 }
 
 async function listenToWebSocketEvents() {
+  console.log("Started listening to websocket")
   if (!wsConnection) return;
 
   try {
     for await (const ev of wsConnection.receive()) {
-      const channel = ev.channel || ev.type;
+      const channel = ev.channel;
 
-      if (channel === "transcript") {
+      if (channel === "capture_session") {
+        handleCaptureSessionEvent(ev).catch((e) => {
+          console.error("[WS] Error processing capture_session event:", e.message);
+        });
+      } else if (channel === "transcript") {
         const text = ev.data?.text;
         const transcriptType = (ev.rtstream_name || "").includes("system")
           ? "system_audio"
@@ -325,7 +318,78 @@ async function listenToWebSocketEvents() {
         contextBuffer.add(type, { text: text, start: ev.data?.start });
       }
     }
-  } catch (_) {}
+  } catch (e) {
+    console.warn("[WS] Listener error:", e.message);
+  }
+
+  // WS disconnected — clear reference so createSession() reconnects
+  console.log("[WS] Connection closed, will reconnect on next session");
+  wsConnection = null;
+}
+
+async function handleCaptureSessionEvent(ev) {
+  const eventType = ev.event || ev.type;
+  const sessionId = ev.capture_session_id || ev.session_id;
+
+  console.log(`[WS] Capture event: ${eventType} for session: ${sessionId}`);
+
+  if (eventType === "capture_session.active") {
+    console.log("[WS] Session is ACTIVE!");
+
+    const data = ev.data || {};
+    const rtstreams = data.rtstreams || data.streams || data.channels || [];
+    if (rtstreams.length === 0 && data && typeof data === "object") {
+      console.log("[WS] No rtstreams in data. Keys received:", Object.keys(data));
+    }
+    console.log(`[WS] Found ${rtstreams.length} RTStreams in payload`);
+
+    const isOurSession = captureSession && captureSession.id === sessionId;
+
+    if (isOurSession) {
+      const normalized = (rtstreams || []).map((r) => ({
+        rtstream_id: r.rtstream_id,
+        name: r.name,
+      }));
+      if (!recordingState.active) {
+        const channelNames = rtstreams.map((r) =>
+          rtstreamNameToDisplayName(r.name || r.channel_id)
+        );
+        recordingState.markActive(sessionId, [...new Set(channelNames)], normalized);
+      } else {
+        recordingState.setRtstreams(normalized);
+      }
+      await startIndexingForRTStreams(rtstreams);
+    } else {
+      console.log(`[WS] Not our session (expected: ${captureSession?.id}, got: ${sessionId}), skipping`);
+    }
+  } else if (eventType === "capture_session.stopped") {
+    console.log("[WS] Session stopped");
+    recordingState.markStopped();
+  } else if (eventType === "capture_session.created") {
+    console.log("[WS] Session created");
+  } else if (eventType === "capture_session.starting") {
+    console.log("[WS] Session starting");
+    recordingState.markStarting();
+  } else if (eventType === "capture_session.stopping") {
+    console.log("[WS] Session stopping");
+    recordingState.markStopping();
+  } else if (eventType === "capture_session.exported") {
+    const exportedId = ev.data?.exported_video_id;
+    const playerUrl = ev.data?.player_url;
+    console.log("[WS] Session exported", exportedId ? `video_id: ${exportedId}` : "", playerUrl ? `player: ${playerUrl}` : "");
+    recordingState.markExported(exportedId, playerUrl);
+  } else if (eventType === "capture_session.failed") {
+    const err = ev.data?.error || ev.data || {};
+    console.error("[WS] Session failed:", err);
+    const message = err.message || "Recording failed";
+    recordingState.markFailed(err.code || "RECORDING_FAILED", message);
+    new Notification({
+      title: "VideoDB Recording Failed",
+      body: `${message}. Run /record again in Claude to start a new recording.`,
+    }).show();
+  } else {
+    console.log(`[WS] Unhandled capture event type: ${eventType}`);
+  }
 }
 
 // =============================================================================
@@ -362,8 +426,10 @@ async function startRecording(selectedChannels, indexingConfigOverride = null) {
   }
 
   try {
-    // Create session if not exists
-    if (!captureSession || !captureClient) {
+    // Create session if not exists, or recreate if WS dropped
+    if (!captureSession || !captureClient || !wsConnection || !wsConnection.isConnected) {
+      captureSession = null;
+      captureClient = null;
       await createSession();
     }
 
@@ -608,12 +674,6 @@ function startAPIServer() {
       "GET /api/claude-session": () => ({ status: "ok", claudeSessionId }),
       "POST /api/permission-prompt": () => handlePermissionPrompt(body),
       "POST /api/shutdown": () => handleShutdown(),
-      "POST /webhook": async () => {
-        handleWebhookEvent(body).catch(e => {
-          console.error("[Webhook] Error processing event:", e.message);
-        });
-        return { status: "ok" };
-      },
     };
 
     const routeKey = `${req.method} ${url}`;
@@ -795,89 +855,6 @@ function startHookSocket() {
 }
 
 // =============================================================================
-// Webhook Handler
-// =============================================================================
-
-async function handleWebhookEvent(body) {
-  const eventType = body.event || body.type;
-  const sessionId = body.capture_session_id || body.session_id;
-  
-  console.log(`[Webhook] Event: ${eventType} for session: ${sessionId}`);
-  console.log(`[Webhook] Full payload:\n${JSON.stringify(body, null, 2)}`);
-
-  if (eventType === "capture_session.active") {
-    console.log("[Webhook] Session is ACTIVE!");
-    
-    const data = body.data || {};
-    const rtstreams = data.rtstreams || data.streams || data.channels || [];
-    if (rtstreams.length === 0 && data && typeof data === "object") {
-      console.log("[Webhook] No rtstreams in data. Keys received:", Object.keys(data));
-    }
-    console.log(`[Webhook] Found ${rtstreams.length} RTStreams in payload`);
-    
-    // Check if this is our session (captureSession exists = we initiated recording)
-    const isOurSession = captureSession && captureSession.id === sessionId;
-
-    if (isOurSession) {
-      const normalized = (rtstreams || []).map((r) => ({
-        rtstream_id: r.rtstream_id,
-        name: r.name,
-      }));
-      if (!recordingState.active) {
-        const channelNames = rtstreams.map((r) =>
-          rtstreamNameToDisplayName(r.name || r.channel_id)
-        );
-        recordingState.markActive(sessionId, [...new Set(channelNames)], normalized);
-      } else {
-        recordingState.setRtstreams(normalized);
-      }
-      if (!wsConnection) {
-        await startIndexingForRTStreams(rtstreams);
-      } else {
-        console.log("[Webhook] Indexing already started, rtstreams stored for status.");
-      }
-    } else {
-      console.log(`[Webhook] Not our session (expected: ${captureSession?.id}, got: ${sessionId}), skipping`);
-    }
-  } else if (eventType === "capture_session.stopped") {
-    console.log("[Webhook] Session stopped");
-    recordingState.markStopped();
-    if (wsConnection) {
-      await wsConnection.close();
-      wsConnection = null;
-    }
-  } else if (eventType === "capture_session.created") {
-    console.log("[Webhook] Session created");
-  } else if (eventType === "capture_session.starting") {
-    console.log("[Webhook] Session starting");
-    recordingState.markStarting();
-  } else if (eventType === "capture_session.stopping") {
-    console.log("[Webhook] Session stopping");
-    recordingState.markStopping();
-  } else if (eventType === "capture_session.exported") {
-    const exportedId = body.data?.exported_video_id;
-    const playerUrl = body.data?.player_url;
-    console.log("[Webhook] Session exported", exportedId ? `video_id: ${exportedId}` : "", playerUrl ? `player: ${playerUrl}` : "");
-    recordingState.markExported(exportedId, playerUrl);
-  } else if (eventType === "capture_session.failed") {
-    const err = body.data?.error || body.data || {};
-    console.error("[Webhook] Session failed:", err);
-    const message = err.message || "Recording failed";
-    recordingState.markFailed(err.code || "RECORDING_FAILED", message);
-    new Notification({
-      title: "VideoDB Recording Failed",
-      body: `${message}. Run /record again in Claude to start a new recording.`,
-    }).show();
-    if (wsConnection) {
-      await wsConnection.close();
-      wsConnection = null;
-    }
-  } else {
-    console.log(`[Webhook] Unhandled event type: ${eventType}`);
-  }
-}
-
-// =============================================================================
 // Assistant Shortcut
 // =============================================================================
 
@@ -968,9 +945,9 @@ function registerAssistantShortcut() {
 // Claude Session Init
 // =============================================================================
 
-// Lightweight haiku handshake — no agent, no MCP, just get a session_id
 function initClaudeSession() {
-  const args = ["-p", "hi", "--model", "haiku", "--max-turns", "1", "--output-format", "json"];
+  const initPrompt = `Session initialized. recorder_port: ${API_PORT}`;
+  const args = ["-p", initPrompt, "--model", "haiku", "--max-turns", "1", "--output-format", "json"];
 
   console.log(`[ClaudeSession] Creating session (haiku handshake)...`);
 
@@ -1008,41 +985,6 @@ function initClaudeSession() {
         resolve({ success: false, code, stdout, stderr, error: e.message });
       }
     });
-  });
-}
-
-// Async warm-up: resume the bare session with full cortex agent + MCP (fire-and-forget)
-function warmUpClaudeSession() {
-  if (!claudeSessionId) return;
-
-  const args = [];
-  if (process.env.PLUGIN_PATH) {
-    args.push("--plugin-dir", process.env.PLUGIN_PATH);
-  }
-  args.push("--agent", CLAUDE_CONFIG.agent);
-  args.push("--model", runtimeModel);
-  if (CLAUDE_CONFIG.dangerouslySkipPermissions) args.push("--dangerously-skip-permissions");
-  for (const tool of CLAUDE_CONFIG.allowedTools) args.push("--allowedTools", tool);
-  args.push("--max-turns", String(CLAUDE_CONFIG.maxTurns));
-  args.push("-r", claudeSessionId, "-p", `Session initialized. recorder_port: ${API_PORT}`, "--output-format", "json");
-
-  console.log(`[ClaudeSession] Warming up with cortex agent (model=${runtimeModel}, async)...`);
-
-  const child = spawn("claude", args, {
-    cwd: PROJECT_ROOT,
-    stdio: ["inherit", "pipe", "inherit"],
-    shell: false,
-  });
-
-  let stdout = "";
-  child.stdout.on("data", (chunk) => { stdout += chunk.toString(); });
-
-  child.on("close", (code) => {
-    console.log(`[ClaudeSession] Warm-up complete (exit ${code})`);
-  });
-
-  child.on("error", (err) => {
-    console.warn("[ClaudeSession] Warm-up failed:", err.message);
   });
 }
 
@@ -1133,7 +1075,6 @@ app.whenReady().then(async () => {
     console.log("Config:", {
       apiKey: API_KEY ? `${API_KEY.substring(0, 10)}...` : "NOT SET",
       baseUrl: BASE_URL,
-      configuredWebhookUrl: CONFIGURED_WEBHOOK_URL || "(not set, will use tunnel or websocket)",
       apiPort: API_PORT,
     });
 
@@ -1142,12 +1083,10 @@ app.whenReady().then(async () => {
     startHookSocket();
 
     // ── Phase 2: Parallel — VideoDB connection + Claude session ──
-    // Haiku handshake blocks (fast), then cortex warm-up runs async
     const connectedPromise = initializeVideoDB();
     await initClaudeSessionWithRetry();
-    overlayManager.showReady(); // show shortcut hint immediately; cortex warm-up will overwrite
-    overlayManager.pushModelConfig(runtimeModel); // send initial model to overlay dropdown
-    warmUpClaudeSession();
+    overlayManager.showReady();
+    overlayManager.pushModelConfig(runtimeModel);
     const connected = await connectedPromise;
     if (!connected) {
       new Notification({
@@ -1156,70 +1095,22 @@ app.whenReady().then(async () => {
       }).show();
     }
 
-    // ── Phase 3: Webhook / tunnel (needs API server running) ──
-    if (CONFIGURED_WEBHOOK_URL) {
-      const baseUrl = CONFIGURED_WEBHOOK_URL.replace(/\/+$/, "");
-      webhookUrl = `${baseUrl}/webhook`;
-      console.log(`✓ Using configured webhook URL: ${webhookUrl}`);
-    } else {
-      console.log("No webhook_url configured, starting Cloudflare tunnel...");
-      webhookUrl = await tunnelManager.start(API_PORT);
-      if (webhookUrl) {
-        webhookUrl = `${webhookUrl}/webhook`;
-        console.log(`✓ Cloudflare tunnel ready: ${webhookUrl}`);
-      } else {
-        console.log("⚠ Tunnel failed, will use WebSocket for events");
-        webhookUrl = null;
-      }
-    }
-
-    if (webhookUrl) {
-      const baseUrl = webhookUrl.replace(/\/webhook$/, "");
-      const verifyStart = Date.now();
-      const MAX_VERIFY_MS = 10000;
-      const RETRY_MS = 500;
-      let verified = false;
-
-      console.log("Verifying webhook URL...");
-      while (Date.now() - verifyStart < MAX_VERIFY_MS) {
-        try {
-          const resp = await fetch(`${baseUrl}/api/status`);
-          await resp.json();
-          console.log(`✓ Webhook URL verified in ${Date.now() - verifyStart}ms`);
-          verified = true;
-          break;
-        } catch (_) {
-          await new Promise((r) => setTimeout(r, RETRY_MS));
-        }
-      }
-
-      if (!verified) {
-        console.warn(`⚠ Webhook URL verification failed after ${MAX_VERIFY_MS}ms`);
-      }
-    }
-
-    // ── Phase 4: Capture session (needs VideoDB + webhook URL) ──
+    // ── Phase 3: Capture session + WebSocket (needs VideoDB connection) ──
     if (connected) {
       try {
         await createSession();
-        console.log("✓ Session pre-created for permission requests");
+        console.log("✓ Session pre-created with WebSocket for events");
       } catch (e) {
         console.warn("Pre-session creation failed:", e.message);
       }
     }
 
-    // ── Phase 5: Permissions (needs captureClient from createSession) ──
+    // ── Phase 4: Permissions (needs captureClient from createSession) ──
     await checkAndRequestPermissions();
 
     trayManager.markStartupComplete();
     registerAssistantShortcut();
 
-    new Notification({
-      title: "VideoDB Recorder",
-      body: webhookUrl
-        ? `Ready with webhook: ${webhookUrl.substring(0, 40)}...`
-        : "Ready (using WebSocket for events)",
-    }).show();
   } catch (error) {
     console.error("Startup error:", error);
     new Notification({
@@ -1287,7 +1178,6 @@ async function shutdownApp() {
     console.log("[Shutdown] WebSocket closed");
   }
 
-  try { await withTimeout(tunnelManager.stop(), 2000); } catch (_) {}
   contextBuffer.cleanup();
   console.log("[Shutdown] Cleanup complete");
 }

@@ -1,6 +1,6 @@
 #!/bin/bash
-# update-recorder.sh - Update plugin dependencies (videodb SDK, electron, etc.)
-# Stops the recorder if running, runs npm update, and restarts.
+# update-recorder.sh - Post-update: install deps + restart recorder
+# Run after `claude plugin update pair-programmer@videodb`
 
 PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$(cd "$(dirname "$0")/.." && pwd)}"
 SKILL_DIR="${PLUGIN_ROOT}/skills/pair-programmer"
@@ -9,7 +9,7 @@ CONFIG_FILE="${CONFIG_DIR}/config.json"
 
 PORT=$(jq -r '.recorder_port // 8899' "$CONFIG_FILE" 2>/dev/null)
 
-# Stop recorder if running
+# ── Step 1: Stop recorder if running ──
 if lsof -i :$PORT >/dev/null 2>&1; then
   echo "Stopping recorder on port $PORT..."
   PID=$(lsof -ti :$PORT 2>/dev/null)
@@ -22,34 +22,22 @@ if lsof -i :$PORT >/dev/null 2>&1; then
     echo "✓ Recorder stopped"
   fi
 else
-  echo "Recorder not running, proceeding with update"
+  echo "Recorder not running"
 fi
 
-# Check node_modules exists
-if [ ! -d "$SKILL_DIR/node_modules" ]; then
-  echo "No node_modules found. Running fresh install..."
-  cd "$SKILL_DIR"
+# ── Step 2: Install/update npm dependencies ──
+echo ""
+cd "$SKILL_DIR"
+if [ ! -d "node_modules" ]; then
+  echo "Installing dependencies..."
   npm install
-  echo "✓ Dependencies installed"
 else
   echo "Updating dependencies..."
-  cd "$SKILL_DIR"
-
-  echo ""
-  echo "Current versions:"
-  npm ls --depth=0 2>/dev/null || true
-  echo ""
-
-  npm update
-
-  echo ""
-  echo "Updated versions:"
-  npm ls --depth=0 2>/dev/null || true
-  echo ""
-  echo "✓ Dependencies updated"
+  npm install
 fi
+echo "✓ Dependencies ready"
 
-# Restart recorder if config is ready
+# ── Step 3: Restart recorder if config is ready ──
 SETUP_DONE=$(jq -r '.setup // false' "$CONFIG_FILE" 2>/dev/null)
 API_KEY=$(jq -r '.videodb_api_key // ""' "$CONFIG_FILE" 2>/dev/null)
 
