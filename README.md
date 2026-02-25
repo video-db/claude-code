@@ -36,16 +36,19 @@ https://github.com/user-attachments/assets/24f25eff-2af1-4048-9bbb-8d1d09559ebb
 
 # Install Pair Programmer
 /plugin install pair-programmer@claude-code
-```
 
-> **Important**: After installation, exit your current Claude Code session and start a new one. The plugin registers MCP servers and skills that only load on session startup.
-
-```bash
 # Configure with your VideoDB API key
 /pair-programmer:record-config
 ```
 
-**Control from MacOS Tray Menu** (System Tray Icon) after installation.
+> **Important**: After installation and config setup, exit your current Claude Code session and start a new one. The plugin registers MCP servers and skills that only load on session startup.
+
+```bash
+# Start recording
+/pair-programmer:record
+```
+
+You can also start recording from the **MacOS Tray Menu** (System Tray Icon).
 
 ---
 
