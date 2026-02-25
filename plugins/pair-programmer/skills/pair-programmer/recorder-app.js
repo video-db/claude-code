@@ -133,7 +133,7 @@ let runtimeModel = CLAUDE_CONFIG.defaultModel;
 
 async function initializeVideoDB() {
   if (!API_KEY) {
-    console.error("No API key configured. Run /pair-programmer:record-config to set up.");
+    console.error("No API key configured. Run /pair-programmer:setup to set up.");
     return false;
   }
 
@@ -1091,7 +1091,7 @@ app.whenReady().then(async () => {
     if (!connected) {
       new Notification({
         title: "VideoDB Recorder",
-        body: "Failed to connect. Run /pair-programmer:record-config to set up.",
+        body: "Failed to connect. Run /pair-programmer:setup to set up.",
       }).show();
     }
 

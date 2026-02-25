@@ -12,11 +12,11 @@ SKILL_DIR="${PLUGIN_ROOT}/skills/pair-programmer"
 CONFIG_DIR="${HOME}/.config/videodb"
 CONFIG_FILE="${CONFIG_DIR}/config.json"
 
-# Check if dependencies are installed (don't auto-install; /pair-programmer:record-config does it on demand)
+# Check if dependencies are installed (don't auto-install; /pair-programmer:setup does it on demand)
 if [ ! -d "$SKILL_DIR/node_modules" ] || [ ! -f "$SKILL_DIR/node_modules/.bin/electron" ]; then
   echo '⚠️ Dependencies not installed.
 
-Run `/pair-programmer:record-config` to set up the recorder (this will install dependencies).'
+Run `/pair-programmer:setup` to set up the recorder (this will install dependencies).'
   exit 0
 fi
 
@@ -27,7 +27,7 @@ if [ ! -f "$CONFIG_FILE" ]; then
 **IMPORTANT: You MUST complete setup before using /pair-programmer:record or any recording commands.**
 
 Run this command NOW to configure:
-→ /pair-programmer:record-config
+→ /pair-programmer:setup
 
 This will set up your API key and start the recorder. Do NOT skip this step.'
   exit 0
@@ -43,7 +43,7 @@ if [ "$SETUP_DONE" != "true" ] || [ -z "$API_KEY" ] || [ "$API_KEY" == "null" ];
 **IMPORTANT: You MUST complete setup before using /pair-programmer:record or any recording commands.**
 
 Run this command NOW to finish configuration:
-→ /pair-programmer:record-config
+→ /pair-programmer:setup
 
 This will verify your API key and start the recorder. Do NOT skip this step.'
   exit 0

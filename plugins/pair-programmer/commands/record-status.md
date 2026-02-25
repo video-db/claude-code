@@ -9,7 +9,7 @@ Show current recording status.
 ## Flow
 
 1. Call `get_status`.
-2. If it errors with "Recorder not reachable" → recorder is not running, suggest `/pair-programmer:record-config` or `bash "${CLAUDE_PLUGIN_ROOT}/scripts/start-recorder.sh"`
+2. If it errors with "Recorder not reachable" → recorder is not running, suggest restarting the Claude session to start the pair programmer
 3. Report concisely:
    - Recording: "Recording active for Xs — screen: N, mic: N, audio: N items"
    - Not recording: "Not recording. N items in buffer from last session."

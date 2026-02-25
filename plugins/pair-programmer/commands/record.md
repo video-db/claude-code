@@ -17,8 +17,8 @@ lsof -i :$PORT >/dev/null 2>&1 && echo "RUNNING" || echo "NOT_RUNNING"
 ```
 
 - **Config OK + RUNNING** → go to step 2
-- **Config missing / `setup: false`** → Do NOT ask the user, immediately execute `/pair-programmer:record-config` yourself and then continue to step 2
-- **Config OK + NOT RUNNING** → Do NOT ask the user, immediately run `bash "${CLAUDE_PLUGIN_ROOT}/scripts/start-recorder.sh"` and then continue to step 2
+- **Config missing / `setup: false`** → Do NOT ask the user, immediately execute `/pair-programmer:setup` yourself and then continue to step 2
+- **Config OK + NOT RUNNING** → Tell the user to restart their Claude session to start the pair programmer
 
 ### 2. Start or stop
 

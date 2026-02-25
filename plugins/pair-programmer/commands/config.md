@@ -1,8 +1,8 @@
 ---
-description: Configure VideoDB Pair Programmer API key and settings
+description: Change VideoDB Pair Programmer settings (API key, ports, indexing, etc.)
 ---
 
-Configure the VideoDB Pair Programmer settings.
+Change VideoDB Pair Programmer settings.
 
 ## Steps
 
@@ -31,15 +31,9 @@ Create or update `~/.config/videodb/config.json`: set `setup: true`, set `videod
 chmod 600 ~/.config/videodb/config.json
 ```
 
-### 4. Start Recorder (if not running)
+### 4. Confirm
 
-```bash
-bash "${CLAUDE_PLUGIN_ROOT}/scripts/start-recorder.sh"
-```
-
-### 5. Confirm
-
-Say configuration is complete and recorder is running (or show the script error if it failed).
+Say settings have been saved.
 
 ---
 
@@ -67,11 +61,11 @@ Show one MCQ: "Which setting would you like to change?" with **all** of these op
 4. **`context_buffer_size`** — Max context items kept. (current: e.g. `50`)
 5. **`assistant_shortcut`** — Global shortcut for assistant. (current: e.g. `CommandOrControl+Shift+A`)
 6. **VideoDB Indexing Configuration** — Screen, system audio, and mic indexing (prompts, batching). → goes to Level 2
-7. **Done** — Finish and save (then go to Step 4).
+7. **Done** — Finish and save.
 
 If they pick 1–5: show what it does, current value (mask if secret), ask for new value or "keep current". Then show **Level 1 MCQ again** with all 7 options.
 
-If they pick 6: go to **Level 2**. If they pick 7: save config and proceed.
+If they pick 6: go to **Level 2**. If they pick 7: save config and confirm.
 
 ---
 

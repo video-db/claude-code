@@ -13,15 +13,15 @@ AI pair programming with real-time screen and audio context. Control everything 
 
 ## On Session Start
 
-When a new session starts and the user hasn't requested anything specific, run `/pair-programmer:record-config` to verify setup and start the recorder if needed.
+When a new session starts and the user hasn't requested anything specific, run `/pair-programmer:setup` to verify setup and start the recorder if needed.
 
 ---
 
 ## Lifecycle
 
-- **Session Start:** If config is complete, starts the recorder; if deps missing, prompts to run `/pair-programmer:record-config`.
+- **Session Start:** If config is complete, starts the recorder; if deps missing, prompts to run `/pair-programmer:setup`.
 - **Session End:** Stops the recorder app.
-- **After `/pair-programmer:record-config`:** Installs deps if needed, runs `start-recorder.sh` to start the app.
+- **After `/pair-programmer:setup`:** Installs deps via `setup-recorder.sh`, then user restarts Claude to start the app.
 
 ---
 
@@ -33,7 +33,8 @@ When a new session starts and the user hasn't requested anything specific, run `
 | `/pair-programmer:record-status` | Show recording status |
 | `/pair-programmer:refresh-context` | Fetch and summarize all context |
 | `/pair-programmer:what-happened` | Summarize recent activity timeline |
-| `/pair-programmer:record-config` | Configure API key and settings |
+| `/pair-programmer:setup` | Initial setup: API key, install dependencies |
+| `/pair-programmer:config` | Change settings (API key, ports, indexing, etc.) |
 | `/pair-programmer:cortex` | Shortcut-triggered: analyze context, respond via overlay |
 
 ---
@@ -226,7 +227,7 @@ curl -s http://127.0.0.1:PORT/
 
 ## First-time setup
 
-Run `/pair-programmer:record-config`: set VideoDB API key, then start recorder.
+Run `/pair-programmer:setup`: set VideoDB API key, install dependencies, then restart Claude to start recorder.
 
 ---
 
@@ -246,7 +247,7 @@ pair-programmer/                    # Plugin root
 │   └── hooks.json                  # SessionStart + SessionEnd hooks
 └── scripts/
     ├── ensure-recorder.sh          # SessionStart: deps + permissions + start
-    ├── start-recorder.sh           # Manual start after record-config
+    ├── setup-recorder.sh           # Install deps after setup
     └── cleanup-recorder.sh         # SessionEnd: stop recorder
 ```
 

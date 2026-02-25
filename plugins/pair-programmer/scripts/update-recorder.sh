@@ -1,5 +1,5 @@
 #!/bin/bash
-# update-recorder.sh - Post-update: install deps + restart recorder
+# update-recorder.sh - Post-update: stop recorder + reinstall deps
 # Run after `claude plugin update pair-programmer@videodb`
 
 PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$(cd "$(dirname "$0")/.." && pwd)}"
@@ -37,28 +37,5 @@ else
 fi
 echo "✓ Dependencies ready"
 
-# ── Step 3: Restart recorder if config is ready ──
-SETUP_DONE=$(jq -r '.setup // false' "$CONFIG_FILE" 2>/dev/null)
-API_KEY=$(jq -r '.videodb_api_key // ""' "$CONFIG_FILE" 2>/dev/null)
-
-if [ "$SETUP_DONE" == "true" ] && [ -n "$API_KEY" ] && [ "$API_KEY" != "null" ]; then
-  echo ""
-  echo "Restarting recorder..."
-  cd "$SKILL_DIR"
-  PROJECT_DIR="$CLAUDE_PROJECT_DIR" nohup npm start > /tmp/videodb-recorder.log 2>&1 &
-
-  for i in 1 2 3 4 5; do
-    sleep 2
-    if lsof -i :$PORT >/dev/null 2>&1; then
-      echo "✓ Recorder restarted on port $PORT"
-      exit 0
-    fi
-  done
-
-  echo "✗ Failed to restart. Check /tmp/videodb-recorder.log"
-  tail -20 /tmp/videodb-recorder.log
-  exit 1
-else
-  echo ""
-  echo "Config not ready, skipping restart. Run /pair-programmer:record-config to set up."
-fi
+echo ""
+echo "✓ Update complete. Restart your Claude session to start the pair programmer."

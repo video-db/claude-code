@@ -38,7 +38,7 @@ https://github.com/user-attachments/assets/24f25eff-2af1-4048-9bbb-8d1d09559ebb
 /plugin install pair-programmer@claude-code
 
 # Configure with your VideoDB API key
-/pair-programmer:record-config
+/pair-programmer:setup
 ```
 
 > **Important**: After installation and config setup, exit your current Claude Code session and start a new one. The plugin registers MCP servers and skills that only load on session startup.
@@ -121,7 +121,8 @@ No copy-pasting. No context switching. Just keep working and ask when you need h
 | Command | Description |
 |---------|-------------|
 | `/pair-programmer:record` | Start or stop recording (opens source picker on first start) |
-| `/pair-programmer:record-config` | Configure API key, buffer sizes, prompts, keyboard shortcut |
+| `/pair-programmer:setup` | Initial setup: API key, install dependencies |
+| `/pair-programmer:config` | Configure API key, buffer sizes, prompts, keyboard shortcut |
 | `/pair-programmer:record-status` | Check recording state, rtstream IDs, buffer sizes |
 | `/pair-programmer:refresh-context` | Fetch current screen/mic/system_audio context |
 | `/pair-programmer:what-happened` | Summarize recent activity with timeline |
@@ -131,7 +132,7 @@ No copy-pasting. No context switching. Just keep working and ask when you need h
 
 ## Configuration
 
-Access via `/pair-programmer:record-config`. Key settings:
+Access via `/pair-programmer:config`. Key settings:
 
 | Setting | Default | Description |
 |---------|---------|-------------|
