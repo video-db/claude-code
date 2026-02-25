@@ -2,6 +2,9 @@
 # ensure-recorder.sh - SessionStart hook to ensure recorder app is ready
 # This runs automatically when a Claude Code session starts
 
+# Guard: skip when run outside Claude Code CLI (e.g. Cursor IDE imports these hooks)
+[ -z "$CLAUDE_PLUGIN_ROOT" ] && exit 0
+
 PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT}"
 SKILL_DIR="${PLUGIN_ROOT}/skills/pair-programmer"
 CONFIG_DIR="${HOME}/.config/videodb"
