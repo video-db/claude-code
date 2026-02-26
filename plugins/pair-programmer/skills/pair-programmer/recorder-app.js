@@ -5,12 +5,17 @@ const fs = require("fs");
 const {
   app,
   Notification,
-  globalShortcut,
   ipcMain,
 } = require("electron");
+
+// Reduce Electron/Chromium memory footprint — we only render a tiny widget
+app.commandLine.appendSwitch("disable-gpu");
+app.commandLine.appendSwitch("disable-software-rasterizer");
+app.commandLine.appendSwitch("disable-dev-shm-usage");
+app.commandLine.appendSwitch("js-flags", "--max-old-space-size=64");
 const http = require("http");
 const net = require("net");
-const { spawn, execSync } = require("child_process");
+const { execSync } = require("child_process");
 const { connect } = require("videodb");
 const { CaptureClient } = require("videodb/capture");
 
@@ -18,6 +23,7 @@ const RecordingState = require("./lib/recording-state");
 const ContextBufferManager = require("./lib/context-buffer");
 const OverlayManager = require("./lib/overlay-manager");
 const TrayManager = require("./lib/tray-manager");
+const WidgetManager = require("./lib/widget-manager");
 const PickerManager = require("./lib/picker-manager");
 const {
   channelIdToDisplayName,
@@ -57,31 +63,6 @@ const INDEXING_CONFIG = {
   mic: config.mic_index || {},
 };
 
-// Claude CLI configuration: plugin defaults ← user overrides (config.claude section)
-function loadClaudeConfig() {
-  var defaults;
-  try {
-    defaults = JSON.parse(fs.readFileSync(path.join(__dirname, "claude.config.json"), "utf8"));
-  } catch (e) {
-    defaults = {};
-  }
-  var user = config.claude || {};
-  return {
-    agent: user.agent || defaults.agent || "pair-programmer:cortex",
-    maxTurns: user.max_turns || defaults.max_turns || 50,
-    allowedTools: user.allowed_tools || defaults.allowed_tools || ["Read", "Write", "Task"],
-    dangerouslySkipPermissions: user.dangerously_skip_permissions !== undefined
-      ? user.dangerously_skip_permissions
-      : defaults.dangerously_skip_permissions !== undefined
-        ? defaults.dangerously_skip_permissions
-        : true,
-    defaultModel: user.default_model || defaults.default_model || "sonnet",
-  };
-}
-const CLAUDE_CONFIG = loadClaudeConfig();
-
-// Project root from env (set by hook scripts), fallback to cwd
-const PROJECT_ROOT = process.env.PROJECT_DIR || process.cwd();
 const UI_DIR = path.join(__dirname, "ui");
 
 
@@ -103,7 +84,9 @@ const contextBuffer = new ContextBufferManager(recordingState, {
 let apiHttpServer = null;
 let overlayManager = null;
 let trayManager = null;
+let widgetManager = null;
 let pickerManager = null;
+let lastPickerChannels = null;
 
 // VideoDB SDK instances
 let conn = null;
@@ -114,17 +97,8 @@ let wsConnection = null;
 // Runtime indexing config (overrides defaults from INDEXING_CONFIG)
 let runtimeIndexingConfig = null;
 
-// Active claude child process (cortex agent) — tracked so we can kill on cancel/shutdown
-let claudeProcess = null;
-let claudeSessionId = null;
 let hookSocketServer = null;
 
-// Saved recording config — used to restart recording after a claude session retry
-let lastRecordingChannels = null;
-let lastRecordingIndexingConfig = null;
-
-// Runtime model selection — mutable via overlay dropdown
-let runtimeModel = CLAUDE_CONFIG.defaultModel;
 
 
 // =============================================================================
@@ -402,8 +376,17 @@ async function checkAndRequestPermissions() {
     return;
   }
   try {
-    await captureClient.requestPermission("screen-capture");
-    await captureClient.requestPermission("microphone");
+    const { systemPreferences } = require("electron");
+    const hasScreen = systemPreferences.getMediaAccessStatus("screen") === "granted";
+    const hasMic = systemPreferences.getMediaAccessStatus("microphone") === "granted";
+
+    if (hasScreen && hasMic) {
+      console.log("✓ Permissions already granted, skipping requests");
+      return;
+    }
+
+    if (!hasScreen) await captureClient.requestPermission("screen-capture");
+    if (!hasMic) await captureClient.requestPermission("microphone");
     console.log("✓ Permissions requested via CaptureClient");
   } catch (e) {
     console.warn("Permission request failed:", e.message);
@@ -450,10 +433,6 @@ async function startRecording(selectedChannels, indexingConfigOverride = null) {
       }));
     }
 
-    // Save config for potential restart after claude session retry
-    lastRecordingChannels = channels;
-    lastRecordingIndexingConfig = indexingConfigOverride;
-
     recordingState.setChannels(channels.map((c) => channelIdToDisplayName(c.channelId)));
 
     const capturePayload = {
@@ -466,6 +445,37 @@ async function startRecording(selectedChannels, indexingConfigOverride = null) {
 
     return { status: "ok", sessionId: captureSession.id };
   } catch (e) {
+    // Handle stale BUSY state — force stop and retry once
+    const isBusy = e.message && e.message.includes("BUSY");
+    if (isBusy && captureClient) {
+      console.log("[Recording] Stale session detected, force-stopping and retrying...");
+      try {
+        await captureClient.stopSession();
+      } catch (_) {}
+      recordingState.markStopped();
+      // Recreate session and retry
+      captureSession = null;
+      captureClient = null;
+      try {
+        await createSession();
+        const availableChannels = await captureClient.listChannels();
+        let retryChannels = selectedChannels;
+        if (!retryChannels) {
+          const mic = availableChannels.mics.default;
+          const systemAudio = availableChannels.systemAudio.default;
+          const display = availableChannels.displays.default;
+          retryChannels = [mic, systemAudio, display].filter(Boolean).map((c) => ({
+            channelId: c.id, type: c.type, record: true, store: true,
+          }));
+        }
+        recordingState.setChannels(retryChannels.map((c) => channelIdToDisplayName(c.channelId)));
+        await captureClient.startSession({ sessionId: captureSession.id, channels: retryChannels });
+        return { status: "ok", sessionId: captureSession.id };
+      } catch (retryErr) {
+        console.error("Retry after BUSY also failed:", retryErr);
+        return { status: "error", error: retryErr.message };
+      }
+    }
     console.error("Start recording error:", e);
     return { status: "error", error: e.message };
   }
@@ -475,6 +485,9 @@ async function stopRecording() {
   if (!recordingState.active || !captureClient) {
     return { status: "error", error: "Not recording" };
   }
+
+  // Mark stopping immediately so widget updates instantly
+  recordingState.markStopping();
 
   try {
     await captureClient.stopSession();
@@ -492,6 +505,37 @@ async function stopRecording() {
 }
 
 
+async function toggleRecording() {
+  if (recordingState.active) {
+    const result = await stopRecording();
+    if (result.status === "ok") {
+      const mins = Math.floor((result.duration || 0) / 60);
+      const secs = (result.duration || 0) % 60;
+      const dur = `${mins}:${secs.toString().padStart(2, "0")}`;
+      console.log(`Recording stopped: ${dur} captured.`);
+    }
+    return result;
+  }
+
+  // Reuse previous picker selection if available (same session)
+  if (lastPickerChannels) {
+    return startRecording(lastPickerChannels);
+  }
+
+  // Show picker UI for display/audio source selection (first time only)
+  if (pickerManager) {
+    const videoChannels = captureClient ? (captureClient.channels || []).filter(c => c.type === "video") : [];
+    const pickerResult = await pickerManager.show(videoChannels);
+    if (!pickerResult) {
+      return { status: "cancelled" };
+    }
+    const channels = buildChannelsFromPicker(pickerResult);
+    lastPickerChannels = channels;
+    return startRecording(channels);
+  }
+  return startRecording(null);
+}
+
 // =============================================================================
 // HTTP API Route Handlers
 // =============================================================================
@@ -500,29 +544,13 @@ function handleGetStatus() {
   return {
     status: "ok",
     ...recordingState.toApiPayload(),
-    claudeSessionId,
-    claudeProcessPid: claudeProcess ? claudeProcess.pid : null,
     bufferCounts: contextBuffer.getCounts(),
   };
 }
 
 async function handleStartRecord(body) {
-  if (!body.channels) {
-    if (!captureSession || !captureClient) await createSession();
-    let videoChannels = [];
-    try {
-      const available = await captureClient.listChannels();
-      videoChannels = Array.from(available.displays || []);
-    } catch (e) {
-      console.warn("[API] listChannels failed, picker will use fallback:", e.message);
-    }
-    const pickerResult = await pickerManager.show(videoChannels);
-    if (!pickerResult) {
-      return { status: "cancelled", error: "User cancelled picker" };
-    }
-    return startRecording(buildChannelsFromPicker(pickerResult), body.indexing_config);
-  }
-  return startRecording(body.channels, body.indexing_config);
+  // Use provided channels or auto-select defaults (null triggers default selection)
+  return startRecording(body.channels || null, body.indexing_config);
 }
 
 async function handleStopRecord() {
@@ -579,30 +607,6 @@ async function handleUpdatePrompt(body) {
     }
   }
   return { status: "ok", message: "Scene index prompt updated", index_type: indexType || "unknown" };
-}
-
-async function handlePermissionPrompt(body) {
-  const toolName = body.tool_name || "Unknown";
-  const toolInput = body.tool_input || {};
-  console.log(`[API] Permission prompt for tool: ${toolName}`);
-  const decision = await overlayManager.showPermissionPrompt({ toolName, toolInput });
-  console.log(`[API] Permission decision: ${decision}`);
-  return { status: "ok", decision };
-}
-
-function killClaudeProcess(reason) {
-  if (!claudeProcess) return false;
-  const pid = claudeProcess.pid;
-  console.log(`[Assistant] Killing claude process PID ${pid} (${reason})`);
-  try {
-    process.kill(pid, "SIGTERM");
-    // Give it 2s to exit gracefully, then force-kill
-    setTimeout(() => {
-      try { process.kill(pid, "SIGKILL"); } catch (_) {}
-    }, 2000);
-  } catch (_) {}
-  claudeProcess = null;
-  return true;
 }
 
 function handleShutdown() {
@@ -671,8 +675,6 @@ function startAPIServer() {
       "POST /api/rtstream/update-prompt": () => handleUpdatePrompt(body),
       "POST /api/overlay/show": () => overlayManager.show(body.text, { loading: body.loading }),
       "POST /api/overlay/hide": () => overlayManager.hide(),
-      "GET /api/claude-session": () => ({ status: "ok", claudeSessionId }),
-      "POST /api/permission-prompt": () => handlePermissionPrompt(body),
       "POST /api/shutdown": () => handleShutdown(),
     };
 
@@ -779,19 +781,6 @@ function startHookSocket() {
         const event = data.hook_event_name || data.event;
         if (!event) return;
 
-        // Only show events from our cortex session
-        const evtSession = data.session_id || data.sessionId;
-        if (evtSession) {
-          if (!claudeSessionId || evtSession !== claudeSessionId) {
-            hookLog(`DROP ${event} session=${(evtSession || "").substring(0, 8)}…`);
-            return;
-          }
-        } else if (claudeSessionId) {
-          // No session_id on event but we have an active session — drop it
-          hookLog(`DROP ${event} (no session_id, ignoring)`);
-          return;
-        }
-
         // Build the overlay payload from raw hook data
         const rawInput = data.tool_input || {};
         let payload;
@@ -855,184 +844,6 @@ function startHookSocket() {
 }
 
 // =============================================================================
-// Assistant Shortcut
-// =============================================================================
-
-function registerAssistantShortcut() {
-  const shortcut = config.assistant_shortcut;
-  if (!shortcut) {
-    console.log("No assistant_shortcut configured, skipping");
-    return;
-  }
-
-  const registered = globalShortcut.register(shortcut, () => {
-    console.log(`[Assistant] Shortcut ${shortcut} triggered`);
-
-    if (!claudeSessionId) {
-      console.error("[Assistant] No claude session available");
-      overlayManager.show("**No Claude session available.**\n\nSession was not created during startup. Restart the recorder to try again.");
-      return;
-    }
-
-    overlayManager.show("", { loading: true });
-
-    const args = [];
-    if (process.env.PLUGIN_PATH) {
-      args.push("--plugin-dir", process.env.PLUGIN_PATH);
-    }
-
-    args.push("--agent", CLAUDE_CONFIG.agent);
-    args.push("--model", runtimeModel);
-    if (CLAUDE_CONFIG.dangerouslySkipPermissions) args.push("--dangerously-skip-permissions");
-    for (const tool of CLAUDE_CONFIG.allowedTools) args.push("--allowedTools", tool);
-    args.push("--max-turns", String(CLAUDE_CONFIG.maxTurns));
-
-    const triggerPrompt = `User triggered the assistant shortcut. recorder_port: ${API_PORT}`;
-    args.push("-r", claudeSessionId, "-p", triggerPrompt, "--output-format", "json");
-    console.log(`[Assistant] Resuming session: ${claudeSessionId}`);
-
-    // Kill any existing claude process before spawning a new one
-    killClaudeProcess("new shortcut activation");
-
-    console.log(`[Assistant] claude ${args.join(" ")}`);
-    let stdout = "";
-    const child = spawn("claude", args, {
-      cwd: PROJECT_ROOT,
-      stdio: ["inherit", "pipe", "inherit"],
-      shell: false,
-    });
-
-    claudeProcess = child;
-    console.log(`[Assistant] PID: ${child.pid}`);
-
-    child.stdout.on("data", (chunk) => {
-      stdout += chunk.toString();
-    });
-
-    child.on("error", (err) => {
-      console.error("[Assistant] Failed to run claude:", err.message);
-      claudeProcess = null;
-      new Notification({
-        title: "Assistant Error",
-        body: "Failed to run claude command",
-      }).show();
-    });
-
-    child.on("close", (code) => {
-      claudeProcess = null;
-      try {
-        const result = JSON.parse(stdout);
-        if (result.session_id && result.session_id !== claudeSessionId) {
-          claudeSessionId = result.session_id;
-          console.log(`[Assistant] session=${claudeSessionId} exit=${code}`);
-        } else {
-          console.log(`[Assistant] exit=${code}`);
-        }
-      } catch (_) {
-        console.log(`[Assistant] exit=${code}`);
-      }
-    });
-  });
-
-  if (registered) {
-    console.log(`✓ Assistant shortcut registered: ${shortcut}`);
-  } else {
-    console.error(`✗ Failed to register shortcut: ${shortcut}`);
-  }
-}
-
-// =============================================================================
-// Claude Session Init
-// =============================================================================
-
-function initClaudeSession() {
-  const initPrompt = `Session initialized. recorder_port: ${API_PORT}`;
-  const args = ["-p", initPrompt, "--model", "haiku", "--max-turns", "1", "--output-format", "json"];
-
-  console.log(`[ClaudeSession] Creating session (haiku handshake)...`);
-
-  return new Promise((resolve) => {
-    let stdout = "";
-    let stderr = "";
-    const child = spawn("claude", args, {
-      cwd: PROJECT_ROOT,
-      stdio: ["inherit", "pipe", "pipe"],
-      shell: false,
-    });
-
-    child.stdout.on("data", (chunk) => { stdout += chunk.toString(); });
-    child.stderr.on("data", (chunk) => { stderr += chunk.toString(); });
-
-    child.on("error", (err) => {
-      resolve({ success: false, error: err.message, stdout, stderr });
-    });
-
-    child.on("close", (code) => {
-      if (code !== 0) {
-        resolve({ success: false, code, stdout, stderr });
-        return;
-      }
-      try {
-        const result = JSON.parse(stdout);
-        if (result.session_id) {
-          claudeSessionId = result.session_id;
-          console.log(`✓ Claude session created: ${claudeSessionId}`);
-          resolve({ success: true });
-        } else {
-          resolve({ success: false, code, stdout, stderr, error: "No session_id in response" });
-        }
-      } catch (e) {
-        resolve({ success: false, code, stdout, stderr, error: e.message });
-      }
-    });
-  });
-}
-
-async function initClaudeSessionWithRetry() {
-  while (true) {
-    const result = await initClaudeSession();
-
-    if (result.success) {
-      // If recording was previously stopped due to session failure, restart it
-      if (lastRecordingChannels && !recordingState.active) {
-        console.log("[ClaudeSession] Restarting recording after successful retry...");
-        try {
-          await startRecording(lastRecordingChannels, lastRecordingIndexingConfig);
-        } catch (e) {
-          console.error("[ClaudeSession] Failed to restart recording:", e.message);
-        }
-      }
-      return;
-    }
-
-    // Build error details
-    const errorOutput = result.stderr || result.stdout || result.error || "Unknown error";
-    const exitCode = result.code != null ? result.code : "N/A";
-
-    // Log full details to hook log
-    hookLog(
-      `[ClaudeSession] FAILED (exit ${exitCode}) ` +
-      `stdout: ${result.stdout || "(empty)"} ` +
-      `stderr: ${result.stderr || "(empty)"} ` +
-      `error: ${result.error || "(none)"}`
-    );
-
-    // Stop recording if it was active
-    if (recordingState.active) {
-      console.log("[ClaudeSession] Stopping active recording due to session failure...");
-      await stopRecording();
-    }
-
-    // Show error overlay and block until user clicks Retry
-    await overlayManager.showClaudeError(
-      `Exit code: ${exitCode}\n\n${errorOutput}`
-    );
-
-    console.log("[ClaudeSession] User requested retry...");
-  }
-}
-
-// =============================================================================
 // App Lifecycle
 // =============================================================================
 
@@ -1043,33 +854,20 @@ app.whenReady().then(async () => {
       app.dock.hide();
     }
     // Initialize managers
+    overlayManager = new OverlayManager();
     pickerManager = new PickerManager({ uiDir: UI_DIR });
-    overlayManager = new OverlayManager(recordingState, {
-      assistantShortcut: config.assistant_shortcut,
+    widgetManager = new WidgetManager(recordingState, {
       uiDir: UI_DIR,
+      onToggleRecording: () => toggleRecording(),
+      ctxBuffer: contextBuffer,
     });
     trayManager = new TrayManager(recordingState, {
-      overlay: overlayManager,
+      widget: widgetManager,
       ctxBuffer: contextBuffer,
       onStartRecording: () => handleStartRecord({}),
       onStopRecording: () => handleStopRecord(),
     });
     trayManager.create();
-
-    // IPC: serve context data to overlay
-    ipcMain.handle("get-context", (_, type) => {
-      if (type === "all") return contextBuffer.getAll();
-      return { [type]: contextBuffer.getRecent(type, 50) };
-    });
-
-    // IPC: model selection from overlay dropdown
-    ipcMain.on("model-change", (_, model) => {
-      if (["haiku", "sonnet", "opus"].includes(model)) {
-        runtimeModel = model;
-        console.log(`[Model] Switched to: ${runtimeModel}`);
-        overlayManager.pushModelConfig(runtimeModel);
-      }
-    });
 
     console.log("Starting VideoDB Recorder...");
     console.log("Config:", {
@@ -1081,13 +879,10 @@ app.whenReady().then(async () => {
     // ── Phase 1: Local infrastructure (no external deps, fast) ──
     startAPIServer();
     startHookSocket();
+    widgetManager.show();
 
-    // ── Phase 2: Parallel — VideoDB connection + Claude session ──
-    const connectedPromise = initializeVideoDB();
-    await initClaudeSessionWithRetry();
-    overlayManager.showReady();
-    overlayManager.pushModelConfig(runtimeModel);
-    const connected = await connectedPromise;
+    // ── Phase 2: VideoDB connection ──
+    const connected = await initializeVideoDB();
     if (!connected) {
       new Notification({
         title: "VideoDB Recorder",
@@ -1109,7 +904,6 @@ app.whenReady().then(async () => {
     await checkAndRequestPermissions();
 
     trayManager.markStartupComplete();
-    registerAssistantShortcut();
 
   } catch (error) {
     console.error("Startup error:", error);
@@ -1135,10 +929,8 @@ function withTimeout(promise, ms) {
 
 async function shutdownApp() {
   console.log("[Shutdown] Starting cleanup...");
-
-  killClaudeProcess("app shutdown");
-  try { globalShortcut.unregisterAll(); } catch (_) {}
   try { if (trayManager) trayManager.destroy(); } catch (_) {}
+  try { if (widgetManager) widgetManager.destroy(); } catch (_) {}
   try { if (overlayManager) overlayManager.destroy(); } catch (_) {}
 
   if (hookSocketServer) {

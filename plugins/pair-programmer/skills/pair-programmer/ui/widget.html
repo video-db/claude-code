@@ -1,0 +1,425 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  html, body {
+    overflow: hidden;
+    background: transparent;
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
+    user-select: none;
+  }
+
+  body {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 100vh;
+    -webkit-app-region: drag;
+  }
+
+  .widget {
+    position: relative;
+    width: 140px;
+    height: 130px;
+    -webkit-app-region: drag;
+
+    /* Apple Liquid Glass */
+    background: linear-gradient(
+      135deg,
+      rgba(0, 0, 0, 0.25) 0%,
+      rgba(0, 0, 0, 0.18) 40%,
+      rgba(0, 0, 0, 0.15) 100%
+    );
+    backdrop-filter: blur(40px) saturate(180%) brightness(0.9);
+    -webkit-backdrop-filter: blur(40px) saturate(180%) brightness(0.9);
+    border-radius: 22px;
+    border: 0.5px solid rgba(255, 255, 255, 0.18);
+    box-shadow:
+      0 0 0 0.5px rgba(255, 255, 255, 0.05),
+      0 2px 8px rgba(0, 0, 0, 0.25),
+      0 8px 32px rgba(0, 0, 0, 0.15),
+      inset 0 1px 0 rgba(255, 255, 255, 0.15),
+      inset 0 -1px 0 rgba(0, 0, 0, 0.1);
+  }
+
+  /* Power button — center of widget */
+  .power-btn {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -45%);
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    border: 1px solid rgba(255, 255, 255, 0.25);
+    background: rgba(255, 255, 255, 0.08);
+    backdrop-filter: blur(12px) saturate(150%);
+    -webkit-backdrop-filter: blur(12px) saturate(150%);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s ease;
+    -webkit-app-region: no-drag;
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.15),
+      0 1px 4px rgba(0, 0, 0, 0.2);
+  }
+
+  .power-btn:hover {
+    border-color: rgba(255, 255, 255, 0.4);
+    background: rgba(255, 255, 255, 0.14);
+  }
+
+  .power-btn:active {
+    transform: translate(-50%, -45%) scale(0.93);
+  }
+
+  .power-btn svg {
+    width: 18px;
+    height: 18px;
+    fill: none;
+    stroke: rgba(255, 255, 255, 0.7);
+    stroke-width: 2;
+    stroke-linecap: round;
+  }
+
+  /* Starting state — orange pulse */
+  .state-starting .power-btn {
+    border-color: #ff9500;
+    animation: pulse-orange 1.4s ease-in-out infinite;
+  }
+  .state-starting .power-btn svg {
+    stroke: #ff9500;
+  }
+
+  @keyframes pulse-orange {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(255, 149, 0, 0.4); }
+    50% { box-shadow: 0 0 12px 4px rgba(255, 149, 0, 0.25); }
+  }
+
+  /* Recording state — red filled with pulse */
+  .state-recording .power-btn {
+    border-color: #ff3b30;
+    background: rgba(255, 59, 48, 0.25);
+    animation: pulse-red 1.6s ease-in-out infinite;
+  }
+  .state-recording .power-btn svg {
+    stroke: #ff3b30;
+  }
+
+  @keyframes pulse-red {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(255, 59, 48, 0.4); }
+    50% { box-shadow: 0 0 14px 5px rgba(255, 59, 48, 0.2); }
+  }
+
+  /* Channel icons — positioned around the power button */
+  .channel-icon {
+    position: absolute;
+    width: 26px;
+    height: 26px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    background: rgba(255, 255, 255, 0.06);
+    border: 0.5px solid rgba(255, 255, 255, 0.1);
+    -webkit-app-region: no-drag;
+  }
+
+  .channel-icon:hover {
+    background: rgba(255, 255, 255, 0.12);
+    border-color: rgba(255, 255, 255, 0.2);
+  }
+
+  .channel-icon:hover svg {
+    stroke: rgba(255, 255, 255, 0.85);
+  }
+
+  .channel-icon:active {
+    transform: scale(0.88);
+  }
+
+  .channel-icon svg {
+    width: 14px;
+    height: 14px;
+    fill: none;
+    stroke: rgba(255, 255, 255, 0.55);
+    stroke-width: 1.8;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    transition: stroke 0.25s ease;
+  }
+
+  /* Channel states */
+  .channel-icon.active svg {
+    stroke: #30d158;
+  }
+
+  .channel-icon.muted {
+    opacity: 0.5;
+  }
+  .channel-icon.muted svg {
+    stroke: rgba(255, 255, 255, 0.3);
+  }
+  .channel-icon.muted::after {
+    content: "";
+    position: absolute;
+    width: 18px;
+    height: 2px;
+    background: #ff453a;
+    border-radius: 1px;
+    transform: rotate(-45deg);
+  }
+
+  /* Close button — top right */
+  .close-btn {
+    position: absolute;
+    top: 6px;
+    right: 6px;
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    background: rgba(255, 255, 255, 0.06);
+    border: 0.5px solid rgba(255, 255, 255, 0.08);
+    transition: all 0.2s ease;
+    -webkit-app-region: no-drag;
+    opacity: 0.4;
+  }
+
+  .close-btn:hover {
+    background: rgba(255, 59, 48, 0.25);
+    border-color: rgba(255, 59, 48, 0.4);
+    opacity: 1;
+  }
+
+  .close-btn:active {
+    transform: scale(0.88);
+  }
+
+  .close-btn svg {
+    width: 8px;
+    height: 8px;
+    fill: none;
+    stroke: rgba(255, 255, 255, 0.5);
+    stroke-width: 2;
+    stroke-linecap: round;
+  }
+
+  .close-btn:hover svg {
+    stroke: #ff453a;
+  }
+
+  /* Positions */
+  .channel-screen {
+    top: 10px;
+    left: 50%;
+    transform: translateX(-50%);
+  }
+  .channel-mic {
+    top: 50%;
+    left: 10px;
+    transform: translateY(-60%);
+  }
+  .channel-speaker {
+    top: 50%;
+    right: 10px;
+    transform: translateY(-60%);
+  }
+
+  /* Override transform for active states on positioned icons */
+  .channel-screen:active { transform: translateX(-50%) scale(0.88); }
+  .channel-mic:active { transform: translateY(-60%) scale(0.88); }
+  .channel-speaker:active { transform: translateY(-60%) scale(0.88); }
+
+  /* Timer — bottom center, only visible when recording */
+  .timer {
+    position: absolute;
+    bottom: 10px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-size: 11px;
+    font-weight: 600;
+    color: rgba(255, 255, 255, 0.55);
+    font-variant-numeric: tabular-nums;
+    letter-spacing: 0.04em;
+    white-space: nowrap;
+    display: none;
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
+  }
+
+  .state-recording .timer {
+    display: block;
+  }
+
+  /* Loading state — after power on, before data arrives */
+  .state-loading .power-btn {
+    border-color: #ff9500;
+    animation: pulse-orange 1.4s ease-in-out infinite;
+  }
+  .state-loading .power-btn svg {
+    stroke: #ff9500;
+  }
+  .state-loading .timer {
+    display: block;
+  }
+</style>
+</head>
+<body>
+  <div class="widget" id="widget">
+    <!-- Screen/monitor icon (top) -->
+    <div class="channel-icon channel-screen disabled" id="ch-screen" data-channel="screen">
+      <svg viewBox="0 0 24 24">
+        <rect x="2" y="3" width="20" height="14" rx="2" ry="2"/>
+        <line x1="8" y1="21" x2="16" y2="21"/>
+        <line x1="12" y1="17" x2="12" y2="21"/>
+      </svg>
+    </div>
+
+    <!-- Mic icon (left) -->
+    <div class="channel-icon channel-mic disabled" id="ch-mic" data-channel="mic">
+      <svg viewBox="0 0 24 24">
+        <path d="M12 1a3 3 0 00-3 3v8a3 3 0 006 0V4a3 3 0 00-3-3z"/>
+        <path d="M19 10v2a7 7 0 01-14 0v-2"/>
+        <line x1="12" y1="19" x2="12" y2="23"/>
+        <line x1="8" y1="23" x2="16" y2="23"/>
+      </svg>
+    </div>
+
+    <!-- Power button (center) -->
+    <div class="power-btn" id="power-btn">
+      <svg viewBox="0 0 24 24">
+        <line x1="12" y1="2" x2="12" y2="12"/>
+        <path d="M16.24 7.76a6 6 0 11-8.48 0"/>
+      </svg>
+    </div>
+
+    <!-- Speaker icon (right) -->
+    <div class="channel-icon channel-speaker disabled" id="ch-speaker" data-channel="system_audio">
+      <svg viewBox="0 0 24 24">
+        <polygon points="11,5 6,9 2,9 2,15 6,15 11,19"/>
+        <path d="M19.07 4.93a10 10 0 010 14.14"/>
+        <path d="M15.54 8.46a5 5 0 010 7.08"/>
+      </svg>
+    </div>
+
+    <!-- Close button -->
+    <div class="close-btn" id="close-btn">
+      <svg viewBox="0 0 10 10">
+        <line x1="1" y1="1" x2="9" y2="9"/>
+        <line x1="9" y1="1" x2="1" y2="9"/>
+      </svg>
+    </div>
+
+    <!-- Timer -->
+    <div class="timer" id="timer">0:00</div>
+  </div>
+
+<script>
+  const { ipcRenderer } = require("electron");
+
+  const powerBtn = document.getElementById("power-btn");
+  const timer = document.getElementById("timer");
+  const channelEls = {
+    screen: document.getElementById("ch-screen"),
+    mic: document.getElementById("ch-mic"),
+    system_audio: document.getElementById("ch-speaker"),
+  };
+
+  let currentState = "idle";
+
+  function setState(state) {
+    if (currentState === state) return;
+    currentState = state;
+    document.body.className = `state-${state}`;
+  }
+
+  function updateChannels(channels) {
+    if (!channels) return;
+    for (const [name, status] of Object.entries(channels)) {
+      const el = channelEls[name];
+      if (!el) continue;
+      el.className = `channel-icon channel-${name === "system_audio" ? "speaker" : name}`;
+      if (status === "active") {
+        el.classList.add("active");
+      } else if (status === "muted") {
+        el.classList.add("muted");
+      }
+    }
+  }
+
+  // Close button click
+  document.getElementById("close-btn").addEventListener("click", (e) => {
+    e.stopPropagation();
+    ipcRenderer.send("widget-close");
+  });
+
+  // Power button click
+  powerBtn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    ipcRenderer.send("widget-click");
+  });
+
+  // Channel icon clicks
+  for (const [name, el] of Object.entries(channelEls)) {
+    el.addEventListener("click", (e) => {
+      e.stopPropagation();
+      ipcRenderer.send("widget-channel-toggle", name);
+    });
+  }
+
+  // Receive state updates from main process
+  ipcRenderer.on("widget-state", (_, data) => {
+    if (data.stopping) {
+      setState("idle");
+      timer.style.display = "none";
+      // Disable all channel icons immediately
+      for (const el of Object.values(channelEls)) {
+        el.className = el.className.replace(/\b(active|muted)\b/g, '').trim();
+      }
+      return;
+    } else if (data.recording) {
+      if (data.dataReceived && data.duration != null) {
+        // Data flowing — show timer and enable icons
+        setState("recording");
+        const mins = Math.floor(data.duration / 60);
+        const secs = data.duration % 60;
+        timer.textContent = `${mins}:${secs.toString().padStart(2, "0")}`;
+        timer.style.display = "block";
+        updateChannels(data.channels);
+      } else {
+        // Recording started but no data yet — show Loading...
+        setState("loading");
+        timer.textContent = "Loading...";
+        timer.style.display = "block";
+        // Keep icons disabled during loading
+        return;
+      }
+    } else if (data.starting) {
+      setState("starting");
+    } else {
+      setState("idle");
+      timer.style.display = "none";
+    }
+    if (!data.recording || data.dataReceived) {
+      updateChannels(data.channels);
+    }
+  });
+
+  // Send initial size
+  ipcRenderer.send("widget-resize", { width: 160, height: 150 });
+
+  // Initialize
+  setState("idle");
+</script>
+</body>
+</html>

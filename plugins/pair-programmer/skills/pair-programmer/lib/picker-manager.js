@@ -36,7 +36,7 @@ class PickerManager {
         alwaysOnTop: true,
         frame: false,
         transparent: false,
-        backgroundColor: "#1a1a1a",
+        backgroundColor: "#1c1c1e",
         show: false,
         skipTaskbar: false,
         focusable: true,
