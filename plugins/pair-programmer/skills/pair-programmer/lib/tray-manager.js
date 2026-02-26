@@ -3,10 +3,10 @@ const { Tray, Menu, app, nativeImage } = require("electron");
 const EMPTY_ICON = nativeImage.createEmpty();
 
 class TrayManager {
-  constructor(recState, { overlay, ctxBuffer, onStartRecording, onStopRecording }) {
+  constructor(recState, { widget, ctxBuffer, onStartRecording, onStopRecording }) {
     this._tray = null;
     this._recordingState = recState;
-    this._overlayManager = overlay;
+    this._widgetManager = widget;
     this._contextBuffer = ctxBuffer;
     this._onStartRecording = onStartRecording;
     this._onStopRecording = onStopRecording;
@@ -88,8 +88,8 @@ class TrayManager {
       menu.push({ type: "separator" });
       menu.push({ label: "Start Recording", enabled: false });
       menu.push({ type: "separator" });
-      menu.push({ label: "Show Overlay", click: () => this._overlayManager.setVisible(true) });
-      menu.push({ label: "Hide Overlay", click: () => this._overlayManager.setVisible(false) });
+      menu.push({ label: "Show Widget", click: () => this._widgetManager.show() });
+      menu.push({ label: "Hide Widget", click: () => this._widgetManager.hide() });
       menu.push({ type: "separator" });
       menu.push({ label: "Quit", click: () => app.quit() });
       return Menu.buildFromTemplate(menu);
@@ -102,24 +102,6 @@ class TrayManager {
         label: "Stop Recording",
         click: async () => {
           await this._onStopRecording();
-        },
-      });
-      menu.push({ type: "separator" });
-      menu.push({
-        label: "Show Context",
-        click: () => {
-          const ctx = this._contextBuffer.getAll();
-          const text = [
-            `Screen: ${ctx.screen.length} records`,
-            `Mic: ${ctx.mic.length} records`,
-            `System Audio: ${ctx.system_audio.length} records`,
-            "",
-            "Recent screen:",
-            ...ctx.screen
-              .slice(-3)
-              .map((r) => `  • ${(r.text || "").substring(0, 50)}...`),
-          ].join("\n");
-          this._overlayManager.show(text);
         },
       });
     } else {
@@ -137,14 +119,8 @@ class TrayManager {
     }
 
     menu.push({ type: "separator" });
-    menu.push({
-      label: "Show Overlay",
-      click: () => this._overlayManager.setVisible(true),
-    });
-    menu.push({
-      label: "Hide Overlay",
-      click: () => this._overlayManager.setVisible(false),
-    });
+    menu.push({ label: "Show Widget", click: () => this._widgetManager.show() });
+    menu.push({ label: "Hide Widget", click: () => this._widgetManager.hide() });
     menu.push({ type: "separator" });
     menu.push({ label: "Quit", click: () => app.quit() });
 
