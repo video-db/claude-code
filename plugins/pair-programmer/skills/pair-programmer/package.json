@@ -10,6 +10,7 @@
   "license": "ISC",
   "description": "",
   "dependencies": {
+    "dotenv": "^16.6.1",
     "electron": "^40.7.0",
     "videodb": "^0.2.0"
   }

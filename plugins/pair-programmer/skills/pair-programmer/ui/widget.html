@@ -17,7 +17,6 @@
     align-items: center;
     justify-content: center;
     height: 100vh;
-    -webkit-app-region: drag;
   }
 
   .widget {
@@ -25,24 +24,17 @@
     width: 140px;
     height: 130px;
     -webkit-app-region: drag;
+    app-region: drag;
 
-    /* Apple Liquid Glass */
-    background: linear-gradient(
-      135deg,
-      rgba(0, 0, 0, 0.25) 0%,
-      rgba(0, 0, 0, 0.18) 40%,
-      rgba(0, 0, 0, 0.15) 100%
-    );
-    backdrop-filter: blur(40px) saturate(180%) brightness(0.9);
-    -webkit-backdrop-filter: blur(40px) saturate(180%) brightness(0.9);
+    /* Apple Dark Glassmorphism */
+    background: rgba(30, 30, 30, 0.65);
+    backdrop-filter: blur(30px) saturate(190%) contrast(110%);
+    -webkit-backdrop-filter: blur(30px) saturate(190%) contrast(110%);
     border-radius: 22px;
-    border: 0.5px solid rgba(255, 255, 255, 0.18);
-    box-shadow:
-      0 0 0 0.5px rgba(255, 255, 255, 0.05),
-      0 2px 8px rgba(0, 0, 0, 0.25),
-      0 8px 32px rgba(0, 0, 0, 0.15),
-      inset 0 1px 0 rgba(255, 255, 255, 0.15),
-      inset 0 -1px 0 rgba(0, 0, 0, 0.1);
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    box-shadow: 
+      0 10px 30px rgba(0, 0, 0, 0.5),
+      inset 0 1px 0 rgba(255, 255, 255, 0.1);
   }
 
   /* Power button — center of widget */
@@ -58,20 +50,21 @@
     background: rgba(255, 255, 255, 0.08);
     backdrop-filter: blur(12px) saturate(150%);
     -webkit-backdrop-filter: blur(12px) saturate(150%);
-    cursor: pointer;
+    cursor: pointer !important;
     display: flex;
     align-items: center;
     justify-content: center;
     transition: all 0.2s ease;
     -webkit-app-region: no-drag;
+    app-region: no-drag;
+    pointer-events: auto;
     box-shadow:
       inset 0 1px 0 rgba(255, 255, 255, 0.15),
       0 1px 4px rgba(0, 0, 0, 0.2);
   }
 
   .power-btn:hover {
-    border-color: rgba(255, 255, 255, 0.4);
-    background: rgba(255, 255, 255, 0.14);
+    transform: translate(-50%, -45%) scale(1.05);
   }
 
   .power-btn:active {
@@ -126,8 +119,6 @@
     align-items: center;
     justify-content: center;
     transition: all 0.2s ease;
-    background: rgba(255, 255, 255, 0.06);
-    border: 0.5px solid rgba(255, 255, 255, 0.1);
     pointer-events: none;
   }
 
@@ -135,7 +126,7 @@
     width: 14px;
     height: 14px;
     fill: none;
-    stroke: rgba(255, 255, 255, 0.55);
+    stroke: rgba(255, 255, 255, 0.9);
     stroke-width: 1.8;
     stroke-linecap: round;
     stroke-linejoin: round;
@@ -148,10 +139,10 @@
   }
 
   .channel-icon.muted {
-    opacity: 0.5;
+    opacity: 1;
   }
   .channel-icon.muted svg {
-    stroke: rgba(255, 255, 255, 0.3);
+    stroke: rgba(255, 255, 255, 0.9);
   }
   .channel-icon.muted::after {
     content: "";
@@ -174,12 +165,14 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    cursor: pointer;
+    cursor: pointer !important;
     background: rgba(255, 255, 255, 0.06);
     border: 0.5px solid rgba(255, 255, 255, 0.08);
     transition: all 0.2s ease;
     -webkit-app-region: no-drag;
-    opacity: 0.4;
+    app-region: no-drag;
+    pointer-events: auto;
+    opacity: 0.8;
   }
 
   .close-btn:hover {
@@ -230,7 +223,7 @@
     transform: translateX(-50%);
     font-size: 11px;
     font-weight: 600;
-    color: rgba(255, 255, 255, 0.55);
+    color: rgba(255, 255, 255, 0.9);
     font-variant-numeric: tabular-nums;
     letter-spacing: 0.04em;
     white-space: nowrap;
@@ -285,11 +278,10 @@
       </svg>
     </div>
 
-    <!-- Close button (hides widget) -->
+    <!-- Minimize button (hides widget) -->
     <div class="close-btn" id="close-btn">
       <svg viewBox="0 0 10 10">
-        <line x1="1" y1="1" x2="9" y2="9"/>
-        <line x1="9" y1="1" x2="1" y2="9"/>
+        <line x1="2" y1="5" x2="8" y2="5"/>
       </svg>
     </div>
 
@@ -309,18 +301,50 @@
   };
 
   let currentState = "starting";
+  let startTime = null;
+  let timerInterval = null;
 
-  function setState(state) {
-    if (currentState === state) return;
+  function updateTimer() {
+    if (!startTime) return;
+    const diff = Math.floor((Date.now() - startTime) / 1000);
+    const m = Math.floor(diff / 60).toString().padStart(2, "0");
+    const s = (diff % 60).toString().padStart(2, "0");
+    statusEl.textContent = `${m}:${s}`;
+  }
+
+  function setState(payload) {
+    const state = typeof payload === "string" ? payload : payload.state;
+    const newStartTime = typeof payload === "object" ? payload.startTime : null;
+
+    if (currentState === state && state !== "recording" && state !== "active") return;
     currentState = state;
-    document.body.className = `state-${state}`;
+
+    let cssState = state;
+    if (state === "active") cssState = "recording";
+    document.body.className = `state-${cssState}`;
     
+    if (timerInterval) {
+      clearInterval(timerInterval);
+      timerInterval = null;
+    }
+
     if (state === "starting") {
       statusEl.textContent = "Starting...";
     } else if (state === "loading") {
       statusEl.textContent = "Loading...";
-    } else if (state === "recording") {
-      statusEl.textContent = "Recording";
+    } else if (state === "started") {
+      statusEl.textContent = "Started";
+    } else if (state === "recording" || state === "active") {
+      if (newStartTime) startTime = newStartTime;
+      else if (!startTime) startTime = Date.now();
+      updateTimer();
+      timerInterval = setInterval(updateTimer, 1000);
+    } else if (state === "stopping") {
+      statusEl.textContent = "Stopping...";
+    } else if (state === "stopped") {
+      statusEl.textContent = "Stopped";
+    } else if (state === "failed") {
+      statusEl.textContent = "Failed";
     }
   }
 
@@ -362,8 +386,8 @@
   });
 
   // Receive state changes
-  ipcRenderer.on("widget-state", (_, state) => {
-    setState(state);
+  ipcRenderer.on("widget-state", (_, payload) => {
+    setState(payload);
   });
 
   // Send initial size

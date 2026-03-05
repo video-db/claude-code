@@ -9,10 +9,10 @@
   </a>
 </p>
 
-<h1 align="center">Claude Code Pair Programmer</h1>
+<h1 align="center">Pair Programmer</h1>
 
 <p align="center">
-  Give Claude Code eyes and ears - perception for real-time screen vision, voice, and audio understanding.
+  Give your AI coding agent eyes and ears — real-time screen vision, voice, and audio understanding.
   <br />
   <a href="https://docs.videodb.io"><strong>Explore the docs -></strong></a>
   <br />
@@ -30,89 +30,79 @@ https://github.com/user-attachments/assets/24f25eff-2af1-4048-9bbb-8d1d09559ebb
 
 ## Installation
 
+### Marketplace
+
 ```bash
-# Add marketplace (one-time)
+# Add the marketplace (one-time)
 /plugin marketplace add video-db/claude-code
 
-# Install Pair Programmer
+# Install the plugin
 /plugin install pair-programmer@claude-code
-
-# Configure with your VideoDB API key
-/pair-programmer:setup
 ```
 
-> **Important**: After installation and config setup, exit your current Claude Code session and start a new one. The plugin registers MCP servers and skills that only load on session startup.
+### npx
 
 ```bash
-# Start recording
-/pair-programmer:record
+npx skills add video-db/claude-code
 ```
 
-You can also start recording from the **MacOS Tray Menu** (System Tray Icon).
+### Setup
+
+Set your VideoDB API key — get a free key at [console.videodb.io](https://console.videodb.io) (no credit card required).
+
+```bash
+export VIDEO_DB_API_KEY=your-key
+```
+
+Or add it to a `.env` file in your project root:
+
+```
+VIDEO_DB_API_KEY=your-key
+```
+
+Then run setup to install dependencies:
+
+```bash
+/pair-programmer setup
+```
 
 ---
 
-## Why Build This?
+## Quick Start
 
-**The Problem**: Traditional AI coding assistants are context-blind. When you code with Claude Code, you're constantly copy-pasting screenshots, describing what's on screen, and repeating yourself. Context switching breaks your flow.
+Start recording your screen, mic, and system audio:
 
-**The Solution**: Pair Programmer gives Claude Code perception - eyes to see your screen, ears to hear your voice and system audio, and memory to track context automatically.
+```
+/pair-programmer record
+```
 
-Like a programmer sitting next to you who sees your terminal errors, hears your questions, and remembers recent context without you repeating anything.
+A picker UI appears to select sources. Once recording starts, a widget overlay shows status, active channels, and elapsed time.
 
----
+When you need context from your session, search it:
 
-## What Is This?
+```
+/pair-programmer search "what was I working on when I mentioned the auth bug?"
+```
 
-A perception layer for Claude Code that streams your screen, microphone, and system audio to VideoDB's capture SDK, runs real-time AI indexing, and feeds context directly into Claude Code.
+```
+/pair-programmer search "what did I say in the last 5 minutes?"
+```
 
-### Core Capabilities
+```
+/pair-programmer search "show me what was on screen when the test failed"
+```
 
-- **Screen Vision**: Real-time visual indexing with AI-generated scene descriptions. Semantic search across screen history.
-- **Voice Hearing**: Live microphone transcription with intent classification (question, command, thinking aloud).
-- **Audio Awareness**: System audio capture (meetings, tutorials) with source classification and summarization.
-- **Context Continuity**: FIFO buffers keep last N items in memory. Claude remembers recent context automatically.
+Summarize recent activity:
 
----
+```
+/pair-programmer what-happened
+```
 
-## How It Works
+Stop recording when done:
 
-1. **Start recording** via `/pair-programmer:record` - continuously captures screen, mic, and system audio in the background
-2. **Context buffers** fill up automatically as you work (last 50 items by default)
-3. **Trigger AI analysis** anytime via keyboard shortcut (`Cmd+Shift+A` by default) or `/pair-programmer:cortex`
-4. **Multi-agent system** analyzes buffered context:
-   - **cortex** - Orchestrator that correlates reports and synthesizes answers
-   - **code-eye** - Reads visual screen context (files, errors, activities)
-   - **voice** - Classifies speech intent and extracts keywords
-   - **hearing** - Classifies system audio source
-   - **narrator** - Shows status and responses in overlay
-5. **Answer appears** in always-on-top overlay window with analysis and suggestions
-
-No copy-pasting. No context switching. Just keep working and ask when you need help.
-
----
-
-## Features
-
-**Recording & Streaming**
-- Real-time screen, mic, and system audio capture via VideoDB SDK
-- Multi-channel streaming with AI visual indexing, transcription, and audio summarization
-- FIFO context buffers (default 50 items each)
-
-**Multi-Agent System**
-- Parallel sense agents report independently to orchestrator
-- Adaptive reading strategies based on context size
-- Semantic search across rtstream history
-
-**Control Interfaces**
-- **MacOS Tray Menu**: Start/stop recording, show/hide overlay
-- **CLI Commands**: Slash commands for config, status, search
-- **Keyboard shortcut**: Configurable trigger for AI analysis (default `Cmd+Shift+A`)
-- **Overlay Window**: Always-on-top responses and loading states
-
-**Session Features**
-- Cloudflare tunnel for webhook delivery
-- Exported video saved to your VideoDB account
+```
+/pair-programmer stop
+```
 
 ---
 
@@ -120,51 +110,27 @@ No copy-pasting. No context switching. Just keep working and ask when you need h
 
 | Command | Description |
 |---------|-------------|
-| `/pair-programmer:record` | Start or stop recording (opens source picker on first start) |
-| `/pair-programmer:setup` | Initial setup: API key, install dependencies |
-| `/pair-programmer:config` | Configure API key, buffer sizes, prompts, keyboard shortcut |
-| `/pair-programmer:record-status` | Check recording state, rtstream IDs, buffer sizes |
-| `/pair-programmer:refresh-context` | Fetch current screen/mic/system_audio context |
-| `/pair-programmer:what-happened` | Summarize recent activity with timeline |
-| `/pair-programmer:cortex` | Trigger AI analysis of buffered context |
-
----
-
-## Configuration
-
-Access via `/pair-programmer:config`. Key settings:
-
-| Setting | Default | Description |
-|---------|---------|-------------|
-| `videodb_api_key` | - | [Get your API key](https://console.videodb.io) |
-| `context_buffer_size_*` | `50` | Max entries per buffer (screen/mic/audio) |
-| `assistant_shortcut` | `CommandOrControl+Shift+A` | Global keyboard shortcut |
-| `visual_index.enabled` | `true` | Enable screen indexing |
-| `mic_index.enabled` | `true` | Enable microphone transcription |
-| `system_audio_index.enabled` | `true` | Enable system audio indexing |
+| `/pair-programmer record` | Start recording (opens source picker) |
+| `/pair-programmer stop` | Stop the running recording |
+| `/pair-programmer search` | Search recording context across screen, mic, and audio |
+| `/pair-programmer what-happened` | Summarize recent activity |
+| `/pair-programmer setup` | Install dependencies and configure API key |
+| `/pair-programmer config` | Change indexing settings |
 
 ---
 
 ## Requirements
 
-- **macOS 12+** (Monterey or later)
 - **Node.js 18+**
-- **Claude Code CLI** - [Install guide](https://docs.anthropic.com/en/docs/claude-code)
-- **VideoDB API Key** - [Sign up](https://console.videodb.io)
-
-**macOS Permissions** (System Settings > Privacy & Security):
-- Microphone Access
-- Screen Recording
-- System Audio Recording
-- Accessibility (optional, for overlay always-on-top)
+- **macOS 12+** (Monterey or later)
+- **VideoDB API Key** — [Sign up](https://console.videodb.io)
 
 ---
 
 ## Community & Support
 
-- **Plugin Issues**: [GitHub Issues](https://github.com/video-db/claude-code/issues)
-- **VideoDB SDK Issues**: [VideoDB Capture Quickstart](https://github.com/video-db/videodb-capture-quickstart/issues)
-- **Documentation**: [docs.videodb.io](https://docs.videodb.io)
+- **Issues**: [GitHub Issues](https://github.com/video-db/claude-code/issues)
+- **Docs**: [docs.videodb.io](https://docs.videodb.io)
 - **Discord**: [Join community](https://discord.gg/py9P639jGz)
 
 ---

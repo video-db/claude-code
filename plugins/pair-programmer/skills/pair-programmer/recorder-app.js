@@ -20,15 +20,35 @@ app.commandLine.appendSwitch("disable-software-rasterizer");
 app.commandLine.appendSwitch("disable-dev-shm-usage");
 app.commandLine.appendSwitch("js-flags", "--max-old-space-size=64");
 
+const dotenv = require("dotenv");
 const { connect } = require("videodb");
 const { CaptureClient } = require("videodb/capture");
+
+// Load .env and pp.config.json from user's project directory if --cwd flag is provided
+const cwdArg = process.argv.find(a => a.startsWith("--cwd="));
+const userCwd = cwdArg ? cwdArg.split("=")[1] : null;
+if (userCwd) {
+  dotenv.config({ path: path.join(userCwd, ".env") });
+}
+
+function loadProjectConfig() {
+  const configPath = userCwd ? path.join(userCwd, "pp.config.json") : null;
+  if (!configPath) return {};
+  try {
+    return JSON.parse(fs.readFileSync(configPath, "utf-8"));
+  } catch (_) {
+    return {};
+  }
+}
+
+const PROJECT_CONFIG = loadProjectConfig();
 
 // =============================================================================
 // Configuration
 // =============================================================================
 
 const API_KEY = process.env.VIDEO_DB_API_KEY;
-const BASE_URL = process.env.VIDEO_DB_BASE_URL || "https://api.videodb.io";
+const BASE_URL = PROJECT_CONFIG.videodb_backend_url || process.env.VIDEO_DB_BASE_URL || "https://api.videodb.io";
 
 const PID_FILE = "/tmp/videodb_pp_pid";
 const EVENTS_FILE = "/tmp/videodb_pp_events.jsonl";
@@ -36,8 +56,7 @@ const INFO_FILE = "/tmp/videodb_pp_info.json";
 
 const UI_DIR = path.join(__dirname, "ui");
 
-// Default indexing config
-const INDEXING_CONFIG = {
+const DEFAULT_INDEXING_CONFIG = {
   visual: {
     enabled: true,
     prompt: "Describe what is visible on the screen, focusing on the main application, content being viewed, and any notable UI elements.",
@@ -60,6 +79,20 @@ const INDEXING_CONFIG = {
     model_name: "mini",
   },
 };
+
+function mergeIndexingConfig(defaults, overrides) {
+  if (!overrides) return defaults;
+  const result = {};
+  for (const key of Object.keys(defaults)) {
+    const configKey = key === "visual" ? "visual_index" : key === "system_audio" ? "system_audio_index" : "mic_index";
+    result[key] = overrides[configKey]
+      ? { ...defaults[key], ...overrides[configKey] }
+      : defaults[key];
+  }
+  return result;
+}
+
+const INDEXING_CONFIG = mergeIndexingConfig(DEFAULT_INDEXING_CONFIG, PROJECT_CONFIG);
 
 // =============================================================================
 // State
@@ -150,7 +183,7 @@ function createTray() {
 function updateTrayMenu() {
   if (!tray) return;
   
-  const isOverlayVisible = widgetWindow && !widgetWindow.isDestroyed();
+  const isOverlayVisible = widgetWindow && !widgetWindow.isDestroyed() && widgetWindow.isVisible();
   
   const menu = Menu.buildFromTemplate([
     { label: "🔴 Recording", enabled: false },
@@ -170,8 +203,11 @@ function updateTrayMenu() {
 
 function toggleOverlay() {
   if (widgetWindow && !widgetWindow.isDestroyed()) {
-    widgetWindow.close();
-    widgetWindow = null;
+    if (widgetWindow.isVisible()) {
+      widgetWindow.hide();
+    } else {
+      widgetWindow.show();
+    }
   } else if (lastPickerConfig) {
     createWidget(lastPickerConfig);
   }
@@ -293,8 +329,7 @@ function createWidget(pickerConfig = null) {
 
   ipcMain.on("widget-close", () => {
     if (widgetWindow && !widgetWindow.isDestroyed()) {
-      widgetWindow.close();
-      widgetWindow = null;
+      widgetWindow.hide();
       updateTrayMenu();
     }
   });
@@ -494,11 +529,15 @@ async function handleCaptureSessionEvent(ev) {
 
   console.log(`[WS] Capture event: ${eventType}`);
 
-  if (eventType === "capture_session.active") {
+  if (eventType === "capture_session.starting") {
+    updateWidgetState({ state: "starting" });
+  } else if (eventType === "capture_session.created") {
+    updateWidgetState({ state: "started" });
+  } else if (eventType === "capture_session.active") {
     console.log("[WS] Session is ACTIVE!");
 
-    // Update widget to recording state
-    updateWidgetState("recording");
+    // Update widget to active state with timer
+    updateWidgetState({ state: "active", startTime: Date.now() });
 
     const data = ev.data || {};
     const rtstreams = data.rtstreams || data.streams || data.channels || [];
@@ -517,6 +556,10 @@ async function handleCaptureSessionEvent(ev) {
     // Start indexing
     await startIndexingForRTStreams(rtstreams);
     
+  } else if (eventType === "capture_session.stopping") {
+    updateWidgetState({ state: "stopping" });
+  } else if (eventType === "capture_session.stopped") {
+    updateWidgetState({ state: "stopped" });
   } else if (eventType === "capture_session.exported") {
     const exportedId = ev.data?.exported_video_id;
     const playerUrl = ev.data?.player_url;
@@ -528,6 +571,7 @@ async function handleCaptureSessionEvent(ev) {
     }).show();
     
   } else if (eventType === "capture_session.failed") {
+    updateWidgetState({ state: "failed" });
     const err = ev.data?.error || ev.data || {};
     console.error("[WS] Session failed:", err);
     

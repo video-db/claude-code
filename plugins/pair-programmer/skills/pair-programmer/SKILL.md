@@ -14,13 +14,11 @@ When user asks for a command, read the corresponding file for instructions:
 | Command | Description | Reference |
 |---------|-------------|-----------|
 | `/pair-programmer record` | Start screen/audio recording | See [commands/record.md](commands/record.md) |
+| `/pair-programmer stop` | Stop the running recording | See [commands/stop.md](commands/stop.md) |
+| `/pair-programmer search` | Search recording context (screen, mic, audio) | See [commands/search.md](commands/search.md) |
+| `/pair-programmer what-happened` | Summarize recent activity | See [commands/what-happened.md](commands/what-happened.md) |
 | `/pair-programmer setup` | Install deps and configure API key | See [commands/setup.md](commands/setup.md) |
-
-## Agents
-
-| Agent | Description | Reference |
-|-------|-------------|-----------|
-| code-eye | Visual context analyzer | See [agents/code-eye.md](agents/code-eye.md) |
+| `/pair-programmer config` | Change indexing and other settings | See [commands/config.md](commands/config.md) |
 
 ## How It Works
 
@@ -58,10 +56,29 @@ The recorder reads these from environment variables:
 
 ## Reading Context
 
-To get recent context from a recording session, read the events file:
+Events are in `/tmp/videodb_pp_events.jsonl`. Use CLI tools to filter — never read the whole file.
+
+| Channel | Content | Density |
+|---------|---------|---------|
+| `visual_index` | Screen descriptions | Dense (~1 every 2s) |
+| `transcript` | Mic speech | Sparse (sentences) |
+| `audio_index` | System audio summaries | Sparse (sentences) |
 
 ```bash
-tail -20 /tmp/videodb_pp_events.jsonl
+# Recent screen context
+grep '"channel":"visual_index"' /tmp/videodb_pp_events.jsonl | tail -10
+
+# Last 5 min of mic transcript
+awk -v cutoff=$(($(date +%s) - 300)) 'match($0, /"unix_ts":([0-9.]+)/, a) && a[1] > cutoff' /tmp/videodb_pp_events.jsonl | grep '"channel":"transcript"'
+
+# Keyword search across all channels
+grep -i 'keyword' /tmp/videodb_pp_events.jsonl
 ```
 
-Or parse it programmatically to filter by channel (visual_index, transcript, audio_index).
+For semantic search across indexed content, use `search-rtstream.js`:
+
+```bash
+node search-rtstream.js --query="your query" --cwd=$(pwd)
+```
+
+See [commands/search.md](commands/search.md) for the full search strategy and CLI patterns.
