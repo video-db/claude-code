@@ -72,15 +72,7 @@ grep -v '"channel":"capture_session"' /tmp/videodb_pp_events.jsonl | grep -i 'au
 
 **Time-window filter (last N minutes):**
 
-```bash
-awk -v cutoff=$(($(date +%s) - 300)) 'match($0, /"unix_ts":([0-9.]+)/, a) && a[1] > cutoff' /tmp/videodb_pp_events.jsonl
-```
-
-Combine time filter with channel filter by piping:
-
-```bash
-awk -v cutoff=$(($(date +%s) - 300)) 'match($0, /"unix_ts":([0-9.]+)/, a) && a[1] > cutoff' /tmp/videodb_pp_events.jsonl | grep '"channel":"transcript"'
-```
+Filter lines from `/tmp/videodb_pp_events.jsonl` where the `unix_ts` JSON field > `(current_epoch - N*60)`. Get current epoch with `$(date +%s)`. Pipe through `grep` to narrow by channel. Generate the appropriate filtering command — use grep, awk, python3, jq, or other tools based on what's available.
 
 **Cross-channel correlation:**
 
@@ -89,10 +81,7 @@ awk -v cutoff=$(($(date +%s) - 300)) 'match($0, /"unix_ts":([0-9.]+)/, a) && a[1
    grep '"channel":"transcript"' /tmp/videodb_pp_events.jsonl | grep -i 'broken'
    ```
 2. Extract the `unix_ts` from the matching line(s).
-3. Search the other channel within +/- 15 seconds of that timestamp:
-   ```bash
-   awk -v ts=TIMESTAMP -v window=15 'match($0, /"unix_ts":([0-9.]+)/, a) && a[1] > (ts-window) && a[1] < (ts+window)' /tmp/videodb_pp_events.jsonl | grep '"channel":"visual_index"'
-   ```
+3. Filter the other channel for events within +/- 15 seconds of that timestamp. Use the `unix_ts` value and generate a command that filters for `unix_ts` between `(ts - 15)` and `(ts + 15)`, then grep by channel.
 
 ### 3b. Subagent execution (complex queries)
 
@@ -116,7 +105,7 @@ Spawn 3 subagents in parallel:
    > "Search /tmp/videodb_pp_events.jsonl for visual_index events related to 'auth'. Run: `grep '"channel":"visual_index"' /tmp/videodb_pp_events.jsonl | grep -i 'auth'`. Read the output. Return a summary of what was on screen related to auth, with timestamps."
 
 2. **Mic search subagent:**
-   > "Search /tmp/videodb_pp_events.jsonl for transcript events related to 'auth'. Run: `grep '"channel":"transcript"' /tmp/videodb_pp_events.jsonl | grep -i 'auth'`. Also read the last 5 minutes of all transcript events for broader context: `awk -v cutoff=$(($(date +%s) - 300)) 'match($0, /"unix_ts":([0-9.]+)/, a) && a[1] > cutoff' /tmp/videodb_pp_events.jsonl | grep '"channel":"transcript"'`. Return a summary of what the user said about auth, with timestamps."
+   > "Search /tmp/videodb_pp_events.jsonl for transcript events related to 'auth'. Use `grep '"channel":"transcript"' /tmp/videodb_pp_events.jsonl | grep -i 'auth'` for keyword matches. Also read the last 5 minutes of all transcript events for broader context — filter for lines where `unix_ts` > (current_epoch - 300) and channel is 'transcript'. Return a summary of what the user said about auth, with timestamps."
 
 3. **Remote semantic search subagent:**
    > "Run semantic search for 'auth discussion' using: `node search-rtstream.js --query='auth discussion' --cwd=<PROJECT_ROOT>`. Read the JSON output and return a summary of the top results with timestamps and relevance scores."
@@ -125,23 +114,25 @@ Spawn 3 subagents in parallel:
 
 Spawn 1 subagent:
 
-> "Read the last 5 minutes of mic transcript from /tmp/videodb_pp_events.jsonl. Run: `awk -v cutoff=$(($(date +%s) - 300)) 'match($0, /"unix_ts":([0-9.]+)/, a) && a[1] > cutoff' /tmp/videodb_pp_events.jsonl | grep '"channel":"transcript"'`. Analyze the transcript and identify: what questions or requests the user made, their intent, and any specific asks. Return a structured summary."
+> "Read the last 5 minutes of mic transcript from /tmp/videodb_pp_events.jsonl. Filter for lines where `unix_ts` > (current_epoch - 300) and channel is 'transcript'. Current epoch: `$(date +%s)`. Analyze the transcript and identify: what questions or requests the user made, their intent, and any specific asks. Return a structured summary."
 
 **Example: time-bounded multi-channel ("last 30 minutes")**
 
 Spawn 2-3 subagents in parallel (one per active channel):
 
 1. **Screen subagent:**
-   > "Read the last 30 minutes of visual_index events. Run: `awk -v cutoff=$(($(date +%s) - 1800)) 'match($0, /"unix_ts":([0-9.]+)/, a) && a[1] > cutoff' /tmp/videodb_pp_events.jsonl | grep '"channel":"visual_index"'`. Screen events are dense — if output is large, sample every 5th line with `awk 'NR%5==0'`. Return a timeline of what was on screen."
+   > "Read the last 30 minutes of visual_index events from /tmp/videodb_pp_events.jsonl. Filter for lines where `unix_ts` > (current_epoch - 1800) and channel is 'visual_index'. Current epoch: `$(date +%s)`. Screen events are dense — if output is large, sample every 5th line. Return a timeline of what was on screen."
 
 2. **Mic subagent:**
-   > "Read the last 30 minutes of transcript events. Run: `awk -v cutoff=$(($(date +%s) - 1800)) 'match($0, /"unix_ts":([0-9.]+)/, a) && a[1] > cutoff' /tmp/videodb_pp_events.jsonl | grep '"channel":"transcript"'`. Return a summary of what the user said, with timestamps."
+   > "Read the last 30 minutes of transcript events from /tmp/videodb_pp_events.jsonl. Filter for lines where `unix_ts` > (current_epoch - 1800) and channel is 'transcript'. Current epoch: `$(date +%s)`. Return a summary of what the user said, with timestamps."
 
 3. **System audio subagent (if active):**
-   > "Read the last 30 minutes of audio_index events. Run: `awk -v cutoff=$(($(date +%s) - 1800)) 'match($0, /"unix_ts":([0-9.]+)/, a) && a[1] > cutoff' /tmp/videodb_pp_events.jsonl | grep '"channel":"audio_index"'`. Return a summary of system audio, with timestamps."
+   > "Read the last 30 minutes of audio_index events from /tmp/videodb_pp_events.jsonl. Filter for lines where `unix_ts` > (current_epoch - 1800) and channel is 'audio_index'. Current epoch: `$(date +%s)`. Return a summary of system audio, with timestamps."
 
 **Rules for subagent prompts:**
-- Always include the exact CLI command(s) to run
+- Describe what data to extract: channel, time range, keywords — let the subagent generate the appropriate command
+- Use `grep` examples for channel/keyword filtering (portable and simple)
+- For time-based filtering, describe the logic (field, cutoff, epoch) and let the subagent pick the right tool (grep, awk, python3, jq)
 - Always include the user's original search query for context
 - Always ask the subagent to return a **summary with timestamps**, not raw output
 - For screen events, tell the subagent to sample if output is large (> 50 lines)

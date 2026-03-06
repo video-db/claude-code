@@ -64,16 +64,25 @@ Events are in `/tmp/videodb_pp_events.jsonl`. Use CLI tools to filter — never 
 | `transcript` | Mic speech | Sparse (sentences) |
 | `audio_index` | System audio summaries | Sparse (sentences) |
 
+**Channel filter** — use grep to filter by channel, pipe to `tail` for recent events:
+
 ```bash
-# Recent screen context
 grep '"channel":"visual_index"' /tmp/videodb_pp_events.jsonl | tail -10
+```
 
-# Last 5 min of mic transcript
-awk -v cutoff=$(($(date +%s) - 300)) 'match($0, /"unix_ts":([0-9.]+)/, a) && a[1] > cutoff' /tmp/videodb_pp_events.jsonl | grep '"channel":"transcript"'
+**Keyword search** — grep across all channels:
 
-# Keyword search across all channels
+```bash
 grep -i 'keyword' /tmp/videodb_pp_events.jsonl
 ```
+
+**Time-window filter** — filter events from the last N minutes:
+1. Get current epoch: `$(date +%s)`
+2. Compute cutoff: `epoch - N*60`
+3. Filter lines where the `unix_ts` JSON field exceeds the cutoff
+4. Pipe through `grep` to narrow by channel
+
+Generate the appropriate filtering command (grep, awk, python3, jq) based on complexity.
 
 For semantic search across indexed content, use `search-rtstream.js`:
 

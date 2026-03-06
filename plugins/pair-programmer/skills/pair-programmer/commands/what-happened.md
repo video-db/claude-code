@@ -27,15 +27,11 @@ grep '"channel":"visual_index"' /tmp/videodb_pp_events.jsonl | tail -15
 
 **Mic transcript (last 10 minutes):**
 
-```bash
-awk -v cutoff=$(($(date +%s) - 600)) 'match($0, /"unix_ts":([0-9.]+)/, a) && a[1] > cutoff' /tmp/videodb_pp_events.jsonl | grep '"channel":"transcript"'
-```
+Filter `/tmp/videodb_pp_events.jsonl` for lines where `unix_ts` > `(current_epoch - 600)` and channel is `"transcript"`. Get current epoch with `$(date +%s)`. Use grep for channel filtering; for time filtering, generate the appropriate command (grep, awk, python3, jq).
 
 **System audio (last 10 minutes):**
 
-```bash
-awk -v cutoff=$(($(date +%s) - 600)) 'match($0, /"unix_ts":([0-9.]+)/, a) && a[1] > cutoff' /tmp/videodb_pp_events.jsonl | grep '"channel":"audio_index"'
-```
+Same time filter as above, but with channel `"audio_index"`.
 
 ### 3. Analyze and provide
 
