@@ -73,7 +73,7 @@ PP 2 is a major upgrade.
 
 ## Demo
 
-https://github.com/user-attachments/assets/24f25eff-2af1-4048-9bbb-8d1d09559ebb
+https://github.com/user-attachments/assets/65af0b7e-3af9-4d05-9f0a-1415b19b4e9a
 
 ---
 
