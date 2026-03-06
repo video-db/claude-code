@@ -91,7 +91,7 @@ npx skills add video-db/pair-programmer
 
 ```bash
 /plugin marketplace add video-db/pair-programmer
-/plugin install pair-programmer@pair-programmer
+/plugin install pair-programmer
 ```
 
 ---
